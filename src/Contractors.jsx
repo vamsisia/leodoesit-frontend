@@ -16,6 +16,7 @@ export default function Contractors() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
+  const [billingRate, setBillingRate] = useState(''); // We just add this!
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
@@ -51,22 +52,30 @@ export default function Contractors() {
 
   const handleAddContractor = async (e) => {
     e.preventDefault();
-    if (!firstName || !lastName || !email || !hourlyRate) return;
+    // NEW: Added !billingRate to the safety check
+    if (!firstName || !lastName || !email || !hourlyRate || !billingRate) return;
+    
     setIsSubmitting(true);
     try {
       const response = await fetch('http://localhost:5000/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ first_name: firstName, last_name: lastName, email, default_hourly_rate: hourlyRate })
+        body: JSON.stringify({ 
+            first_name: firstName, 
+            last_name: lastName, 
+            email, 
+            default_hourly_rate: hourlyRate, 
+            billing_rate: billingRate 
+        })
       });
       const data = await response.json();
       if (data.success) {
         setContractors([...contractors, data.data]);
-        setFirstName(''); setLastName(''); setEmail(''); setHourlyRate('');
+        // NEW: Added setBillingRate('') to clear the form
+        setFirstName(''); setLastName(''); setEmail(''); setHourlyRate(''); setBillingRate('');
       }
     } catch (error) { alert("❌ Network error."); } finally { setIsSubmitting(false); }
   };
-
   const handleEditClick = (user) => {
     setEditingId(user.id);
     setEditFormData({ ...user, is_active: user.is_active !== false }); 
@@ -194,10 +203,14 @@ export default function Contractors() {
             <input type="text" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} style={styles.input} required />
             <input type="text" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} style={styles.input} required />
             <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} required />
-            <div style={styles.rateWrapper}>
+            <div style={styles.rateWrapper} title = "Contractor Pay Rate">
               <span style={styles.currencySymbol}>$</span>
               <input type="number" step="0.01" placeholder="Rate" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} style={styles.rateInput} required />
             </div>
+            <div style={styles.rateWrapper} title="Client Billing Rate">
+                <span style={styles.currencySymbol}>Bill $</span>
+                <input type="number" step="0.01" placeholder="80" value={billingRate} onChange={(e) => setBillingRate(e.target.value)} style={styles.rateInput} required />
+              </div>
             <button type="submit" style={styles.submitBtn} disabled={isSubmitting}>+ Add</button>
           </div>
         </form>
@@ -237,7 +250,13 @@ export default function Contractors() {
                           <input value={editFormData.last_name} onChange={(e) => handleEditChange(e, 'last_name')} style={{...styles.editInput, marginLeft: '5px'}} />
                         </td>
                         <td style={styles.td}><input value={editFormData.email} onChange={(e) => handleEditChange(e, 'email')} style={styles.editInput} /></td>
-                        <td style={styles.td}><input type="number" step="0.01" value={editFormData.default_hourly_rate} onChange={(e) => handleEditChange(e, 'default_hourly_rate')} style={styles.editInput} /></td>
+                        <td style={styles.td}>
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                        <input type="number" step="0.01" value={editFormData.default_hourly_rate || ''} onChange={(e) => handleEditChange(e, 'default_hourly_rate')} style={styles.editInput} title="Pay Rate" />
+                        <span style={{ color: '#9CA3AF' }}>/</span>
+                        <input type="number" step="0.01" value={editFormData.billing_rate || ''} onChange={(e) => handleEditChange(e, 'billing_rate')} style={styles.editInput} title="Bill Rate" />
+                      </div>
+                    </td>
                         <td style={styles.td}>
                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}>
                              <input type="checkbox" checked={editFormData.is_active} onChange={(e) => handleEditChange(e, 'is_active')} /> Active
@@ -252,7 +271,7 @@ export default function Contractors() {
                       <>
                         <td style={styles.td}><strong>{user.first_name} {user.last_name}</strong></td>
                         <td style={styles.td}>{user.email}</td>
-                        <td style={styles.td}><span style={styles.rateBadge}>${parseFloat(user.default_hourly_rate).toFixed(2)} / hr</span></td>
+                        <td style={styles.td}><span style={styles.rateBadge}>Pay: ${parseFloat(user.default_hourly_rate).toFixed(2)} | Bill: ${parseFloat(user.billing_rate || 0).toFixed(2)}</span></td>
                         <td style={styles.td}>
                           <span style={user.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
                             {user.is_active !== false ? 'Active' : 'Inactive'}
