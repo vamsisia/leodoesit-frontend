@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
+import ConfirmationModal from './ConfirmationModal';
 export default function App() {
   const [user, setUser] = useState(null);
   const [latestTimesheet, setLatestTimesheet] = useState(null);
@@ -9,10 +9,12 @@ export default function App() {
   // Form State
   const [hours, setHours] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
   // REAL File Upload State
   const [uploadedFiles, setUploadedFiles] = useState([]);
-
+  
+  // --- NEW: Controls if popup is visible ---
+  const [isModalOpen, setIsModalOpen] = useState(false); // <-- ADD THIS LINE
+  
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -51,57 +53,59 @@ export default function App() {
   };
 
   // --- NEW: Submit using FormData so it can carry files ---
-  const handleSubmitTimesheet = async (e) => {
-    e.preventDefault();
-    if (!hours || uploadedFiles.length === 0) {
-      alert("⚠️ You must enter your hours AND attach at least one screenshot of proof.");
-      return;
+  // --- NEW: 1. This checks the form and OPENS the popup ---
+ // --- NEW: 1. This checks the form and OPENS the popup ---
+ const handleOpenPopup = (e) => {
+  e.preventDefault();
+  if (!hours || uploadedFiles.length === 0) {
+    alert("⚠️ You must enter your hours AND attach at least one screenshot of proof.");
+    return;
+  }
+  setIsModalOpen(true);
+};
+
+// --- NEW: 2. This actually sends the data to the server ---
+const handleFinalSubmit = async () => {
+  setIsSubmitting(true);
+  try {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - 14);
+
+    const formData = new FormData();
+    formData.append('user_id', user.id);
+    formData.append('period_start', startDate.toISOString());
+    formData.append('period_end', endDate.toISOString());
+    formData.append('total_hours', parseFloat(hours));
+    
+    uploadedFiles.forEach(file => {
+      formData.append('screenshots', file); 
+    });
+
+    const response = await fetch('http://localhost:5000/api/timesheets', {
+      method: 'POST',
+      body: formData 
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      setLatestTimesheet(data.data); 
+      setIsModalOpen(false);
+      alert("✅ Timesheet and files submitted successfully!");
+    } else {
+      alert("❌ Failed to submit: " + data.error);
     }
+  } catch (error) {
+    alert("❌ Network Error.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
-    setIsSubmitting(true);
-    try {
-      // Calculate a basic 2-week period ending today
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(endDate.getDate() - 14);
-
-      // Package the data AND the files together
-      const formData = new FormData();
-      formData.append('user_id', user.id);
-      formData.append('period_start', startDate.toISOString());
-      formData.append('period_end', endDate.toISOString());
-      formData.append('total_hours', parseFloat(hours));
-      
-      // Attach every selected file to the FormData
-      uploadedFiles.forEach(file => {
-        formData.append('screenshots', file); 
-      });
-
-      const response = await fetch('http://localhost:5000/api/timesheets', {
-        method: 'POST',
-        // Notice we REMOVED the 'Content-Type': 'application/json' header.
-        // The browser automatically sets the correct header for FormData!
-        body: formData 
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setLatestTimesheet(data.data); // This instantly triggers the Lockout Rule!
-        alert("✅ Timesheet and files submitted successfully!");
-      } else {
-        alert("❌ Failed to submit: " + data.error);
-      }
-    } catch (error) {
-      alert("❌ Network Error.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('leodoesit_user');
-    navigate('/');
-  };
+const handleLogout = () => {
+  localStorage.removeItem('leodoesit_user');
+  navigate('/');
+};
 
   if (loading || !user) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading Portal...</div>;
 
@@ -184,7 +188,7 @@ export default function App() {
                 )}
               </div>
 
-              <form onSubmit={handleSubmitTimesheet} style={styles.form}>
+              <form onSubmit={handleOpenPopup} style={styles.form}>
                 <div style={styles.inputGroup}>
                   <label style={styles.label}>Total Hours for this Period</label>
                   <input 
@@ -233,6 +237,15 @@ export default function App() {
           )}
         </div>
       </div>
+      {/* --- ADD THE MODAL CODE EXACTLY HERE --- */}
+      <ConfirmationModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleFinalSubmit}
+        hours={hours}
+        payout={hours ? (parseFloat(hours) * parseFloat(user.default_hourly_rate)).toFixed(2) : "0.00"}
+        isSubmitting={isSubmitting}
+      />
     </div>
   );
 }
