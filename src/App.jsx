@@ -154,14 +154,15 @@ const handleLogout = () => {
                     <p style={styles.gridLabel}>Hours Logged</p>
                     <p style={styles.gridValue}>{latestTimesheet.total_hours} hrs</p>
                   </div>
-                  <div>
-                    <p style={styles.gridLabel}>Hourly Rate</p>
-                    <p style={styles.gridValue}>${parseFloat(user.default_hourly_rate).toFixed(2)} / hr</p>
+                 {/* Change user.default_hourly_rate to user.pay_rate */}
+<div>
+  <p style={styles.gridLabel}>Hourly Rate</p>
+  <p style={styles.gridValue}>${parseFloat(user.pay_rate).toFixed(2)} / hr</p>
                   </div>
                   <div>
                     <p style={styles.gridLabel}>Projected Payout</p>
                     <p style={{...styles.gridValue, color: '#10B981'}}>
-                      ${(parseFloat(latestTimesheet.total_hours) * parseFloat(user.default_hourly_rate)).toFixed(2)}
+                      ${(parseFloat(latestTimesheet.total_hours) * parseFloat(user.pay_rate)).toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -239,13 +240,14 @@ const handleLogout = () => {
       </div>
       {/* --- ADD THE MODAL CODE EXACTLY HERE --- */}
       <ConfirmationModal 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onConfirm={handleFinalSubmit}
-        hours={hours}
-        payout={hours ? (parseFloat(hours) * parseFloat(user.default_hourly_rate)).toFixed(2) : "0.00"}
-        isSubmitting={isSubmitting}
-      />
+  isOpen={isModalOpen}
+  onClose={() => setIsModalOpen(false)}
+  onConfirm={handleFinalSubmit}
+  hours={hours}
+  // Change user.default_hourly_rate to user.pay_rate below!
+  payout={hours ? (parseFloat(hours) * parseFloat(user.pay_rate)).toFixed(2) : "0.00"}
+  isSubmitting={isSubmitting}
+/>
     </div>
   );
 }

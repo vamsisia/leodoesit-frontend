@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> e8dfeaf00cc54ea0a176515aaa546083ec2696bf
 import { useState, useEffect } from 'react';
 
 export default function Contractors() {
