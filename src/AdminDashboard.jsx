@@ -521,10 +521,29 @@ export default function AdminDashboard() {
     }
 
     const targets = modalConfig.isBulk ? selectedIds : [modalConfig.targetId];
+    
+    // 🔥 THE FIX: Close the modal and drawer instantly to keep the UI snappy!
+    setModalConfig({ isOpen: false, action: '', targetId: null, isBulk: false });
+    if (drawerItem) setDrawerItem(null); 
+
+    // Now send the request to the server in the background
     await executeBackendAction(modalConfig.action, targets, rejectionReason);
   };
 
   const executeBackendAction = async (action, targetArray, reason = '') => {
+    // 🔥 1. OPTIMISTIC UPDATE: Update the UI instantly before the server even finishes!
+    // Using 'prevTimesheets' guarantees React never uses a stale memory snapshot
+    setTimesheets(prevTimesheets => prevTimesheets.map(ts => {
+      if (targetArray.includes(ts.id)) {
+        return { ...ts, status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' };
+      }
+      return ts;
+    }));
+
+    // Clear selections instantly
+    setSelectedIds([]);
+
+    // 2. Now process the heavy network lifting silently in the background
     setIsProcessing(true);
     try {
       for (let id of targetArray) {
@@ -538,25 +557,14 @@ export default function AdminDashboard() {
           });
         }
       }
-      
-      // Update local state to avoid full re-fetch if desired, or just re-fetch
-      setTimesheets(timesheets.map(ts => {
-        if (targetArray.includes(ts.id)) {
-          return { ...ts, status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' };
-        }
-        return ts;
-      }));
-
-      setSelectedIds([]);
-      setModalConfig({ isOpen: false, action: '', targetId: null, isBulk: false });
-      if (drawerItem) setDrawerItem(null); // Close drawer if open
     } catch (error) {
-      alert("❌ Server error processing request.");
+      console.error("Background processing failed:", error);
+      alert("❌ Server error processing request. Please refresh the page.");
     } finally {
       setIsProcessing(false);
     }
   };
-
+ 
   const toggleSelection = (id) => {
     if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(i => i !== id));
     else setSelectedIds([...selectedIds, id]);
