@@ -592,6 +592,8 @@ export default function Contractors() {
   );
 }
 
+
+
 const styles = {
   header: { marginBottom: '30px' },
   title: { fontSize: '28px', color: '#111827', margin: '0 0 5px 0' },
