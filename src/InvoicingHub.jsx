@@ -111,9 +111,9 @@ export default function InvoicingHub() {
     let valA, valB;
 
     if (sortConfig.key === 'projected_total') {
-      valA = parseFloat(a.total_hours) * parseFloat(a.default_hourly_rate);
-      valB = parseFloat(b.total_hours) * parseFloat(b.default_hourly_rate);
-    } else if (sortConfig.key === 'total_hours' || sortConfig.key === 'default_hourly_rate') {
+      valA = parseFloat(a.total_hours) * parseFloat(a.pay_rate); // Changed here
+      valB = parseFloat(b.total_hours) * parseFloat(b.pay_rate); // Changed here
+    } else if (sortConfig.key === 'total_hours' || sortConfig.key === 'pay_rate') { // Changed here
       valA = parseFloat(a[sortConfig.key] || 0);
       valB = parseFloat(b[sortConfig.key] || 0);
     } else {
@@ -172,9 +172,9 @@ export default function InvoicingHub() {
                   <th style={styles.thSortable} onClick={() => handleSort('first_name')}>
                     Contractor {sortConfig.key === 'first_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  <th style={styles.thSortable} onClick={() => handleSort('default_hourly_rate')}>
-                    Rate {sortConfig.key === 'default_hourly_rate' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                  </th>
+                  <th style={styles.thSortable} onClick={() => handleSort('pay_rate')}>
+                        Rate {sortConfig.key === 'pay_rate' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
                   <th style={styles.thSortable} onClick={() => handleSort('total_hours')}>
                     Hours {sortConfig.key === 'total_hours' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
@@ -187,15 +187,15 @@ export default function InvoicingHub() {
               </thead>
               <tbody>
                 {currentItems.map((ts) => {
-                  const projectedTotal = parseFloat(ts.total_hours) * parseFloat(ts.default_hourly_rate);
+                 const projectedTotal = parseFloat(ts.total_hours) * parseFloat(ts.pay_rate);
                   const isReady = !!selectedClients[ts.id]; // Is a client selected?
 
                   return (
                     <tr key={ts.id} style={styles.tableRow}>
                       <td style={styles.td}><strong>{ts.first_name} {ts.last_name}</strong></td>
-                      <td style={styles.td}>${parseFloat(ts.default_hourly_rate).toFixed(2)}/hr</td>
+                    {/* Display pay_rate here */}
+                      <td style={styles.td}>${parseFloat(ts.pay_rate).toFixed(2)}/hr</td> 
                       <td style={styles.td}><strong>{ts.total_hours}</strong></td>
-                      
                       {/* DIAMOND FEATURE: Pre-Flight Financial Preview */}
                       <td style={styles.td}>
                         <span style={styles.projectedBadge}>
