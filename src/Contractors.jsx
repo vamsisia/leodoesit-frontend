@@ -15,7 +15,6 @@ export default function Contractors() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [insightUser, setInsightUser] = useState(null);
-  
   const [viewingUser, setViewingUser] = useState(null);
   
   const initialFormState = {
@@ -67,19 +66,22 @@ export default function Contractors() {
     }
   };
 
+  // --- Handlers for Add Form ---
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // 🌟 THE AUTO-FILL MAGIC FOR "ADD EMPLOYEE" 🌟
   const handleClientSelect = (e) => {
     const selectedName = e.target.value;
     const selectedClient = clients.find(c => (c.company_name || c.name) === selectedName);
-    const autoEmail = selectedClient ? (selectedClient.billing_email || selectedClient.email || '') : '';
 
     setFormData({
       ...formData,
       vendor_name: selectedName,
-      vendor_email: autoEmail
+      vendor_email: selectedClient ? (selectedClient.billing_email || '') : '',
+      net_terms: selectedClient ? (selectedClient.net_terms || 'Net 30') : 'Net 30',
+      vendor_address: selectedClient ? (selectedClient.vendor_address || '') : ''
     });
   };
 
@@ -108,17 +110,34 @@ export default function Contractors() {
     }
   };
 
+  // --- Handlers for Edit Form ---
   const handleEditClick = (user) => {
     setEditingId(user.id);
     setEditFormData({ ...user, is_active: user.is_active !== false }); 
   };
 
-  const handleEditChange = (e, field) => {
+  const handleEditChange = (e) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-    setEditFormData({ ...editFormData, [field]: value });
+    setEditFormData({ ...editFormData, [e.target.name]: value });
   };
 
-  const handleSaveEdit = async () => {
+  // 🌟 THE AUTO-FILL MAGIC FOR "EDIT EMPLOYEE" 🌟
+  const handleEditClientSelect = (e) => {
+    const selectedName = e.target.value;
+    const selectedClient = clients.find(c => (c.company_name || c.name) === selectedName);
+
+    setEditFormData({
+      ...editFormData,
+      vendor_name: selectedName,
+      vendor_email: selectedClient ? (selectedClient.billing_email || '') : '',
+      net_terms: selectedClient ? (selectedClient.net_terms || 'Net 30') : 'Net 30',
+      vendor_address: selectedClient ? (selectedClient.vendor_address || '') : ''
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
     try {
       const response = await fetch(`http://localhost:5000/api/users/${editingId}`, {
         method: 'PUT',
@@ -130,7 +149,7 @@ export default function Contractors() {
         setContractors(contractors.map(c => c.id === editingId ? { ...c, ...data.data } : c));
         setEditingId(null);
       }
-    } catch (error) { alert("❌ Failed to update contractor."); }
+    } catch (error) { alert("❌ Failed to update contractor."); } finally { setIsSubmitting(false); }
   };
 
   const exportToCSV = () => {
@@ -242,62 +261,44 @@ export default function Contractors() {
                   <th style={styles.thSortable} onClick={() => handleSort('first_name')}>Name {sortConfig.key === 'first_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                   <th style={styles.thSortable} onClick={() => handleSort('email')}>Email {sortConfig.key === 'email' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                   <th style={styles.thSortable} onClick={() => handleSort('pay_rate')}>Financials {sortConfig.key === 'pay_rate' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th style={styles.th}>Role / Type</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Role / Type</th>
                   <th style={styles.th}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {currentItems.map((user) => (
                   <tr key={user.id} style={styles.tableRow}>
-                    {editingId === user.id ? (
-                      <>
-                        <td style={styles.td}>
-                          <input value={editFormData.first_name} onChange={(e) => handleEditChange(e, 'first_name')} style={styles.editInput} />
-                          <input value={editFormData.last_name} onChange={(e) => handleEditChange(e, 'last_name')} style={{...styles.editInput, marginLeft: '5px'}} />
-                        </td>
-                        <td style={styles.td}><input value={editFormData.email} onChange={(e) => handleEditChange(e, 'email')} style={styles.editInput} /></td>
-                        <td style={styles.td}><em>Edit details in portal</em></td>
-                        <td style={styles.td}>
-                           <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}>
-                             <input type="checkbox" checked={editFormData.is_active} onChange={(e) => handleEditChange(e, 'is_active')} /> Active
-                           </label>
-                        </td>
-                        <td style={styles.td}>
-                          <button onClick={handleSaveEdit} style={styles.saveBtn}>Save</button>
-                          <button onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td style={styles.td}>
-                          <strong 
-                            onClick={() => setViewingUser(user)} 
-                            style={{ cursor: 'pointer', color: '#4F46E5' }}
-                            title="Click to view full details"
-                          >
-                            {user.first_name} {user.last_name}
-                          </strong>
-                        </td>
-                        <td style={styles.td}>{user.email}</td>
-                        <td style={styles.td}>
-                          {user.pay_rate != null ? (
-                            <span style={styles.rateBadge}>Pay: ${parseFloat(user.pay_rate).toFixed(2)} | Bill: ${parseFloat(user.invoice_rate || 0).toFixed(2)}</span>
-                          ) : (
-                            <span style={styles.badgeInactive}>No Rates Set</span>
-                          )}
-                        </td>
-                        <td style={styles.td}>
-                          <div style={{ fontSize: '13px', color: '#4B5563' }}>{user.role || 'Unassigned'}</div>
-                          <span style={user.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
-                            {user.contract_type || 'W2'} - {user.is_active !== false ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td style={styles.td}>
-                          <button onClick={() => openInsights(user)} style={styles.insightBtn}>📊 Stats</button>
-                          <button onClick={() => handleEditClick(user)} style={styles.editBtn}>Edit Login</button>
-                        </td>
-                      </>
-                    )}
+                    <td style={styles.td}>
+                      <strong 
+                        onClick={() => setViewingUser(user)} 
+                        style={{ cursor: 'pointer', color: '#4F46E5' }}
+                        title="Click to view full details"
+                      >
+                        {user.first_name} {user.last_name}
+                      </strong>
+                    </td>
+                    <td style={styles.td}>{user.email}</td>
+                    <td style={styles.td}>
+                      {user.pay_rate != null ? (
+                        <span style={styles.rateBadge}>Pay: ${parseFloat(user.pay_rate).toFixed(2)} | Bill: ${parseFloat(user.invoice_rate || 0).toFixed(2)}</span>
+                      ) : (
+                        <span style={styles.badgeInactive}>No Rates Set</span>
+                      )}
+                    </td>
+                    <td style={styles.td}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '14px', color: '#111827', fontWeight: '700', textTransform: 'capitalize', letterSpacing: '0.3px', textAlign: 'center' }}>
+                          {user.role || 'Unassigned'}
+                        </span>
+                        <span style={user.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
+                          {user.contract_type || 'W2'} - {user.is_active !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <button onClick={() => openInsights(user)} style={styles.insightBtn}>📊 Stats</button>
+                      <button onClick={() => handleEditClick(user)} style={styles.editBtn}>Edit</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -314,6 +315,99 @@ export default function Contractors() {
         )}
       </div>
 
+      {/* --- NEW: The "Edit Employee" Modal --- */}
+      {editingId && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.largeModalBox}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, color: '#111827' }}>Edit Employee Record</h2>
+              <button onClick={() => setEditingId(null)} style={styles.closeBtn}>✕</button>
+            </div>
+            
+            <form onSubmit={handleSaveEdit} style={{ overflowY: 'auto', maxHeight: '70vh', paddingRight: '10px' }}>
+              
+              {/* --- ACTIVE STATUS CHECKBOX --- */}
+              <div style={{ backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" name="is_active" checked={editFormData.is_active !== false} onChange={handleEditChange} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                <label style={{ fontSize: '15px', color: '#111827', fontWeight: 'bold', cursor: 'pointer' }}>Employee is Active</label>
+              </div>
+
+              <h3 style={styles.sectionHeader}>1. Personal Info</h3>
+              <div style={styles.formGrid}>
+                <input required type="text" name="first_name" placeholder="First Name *" value={editFormData.first_name || ''} onChange={handleEditChange} style={styles.input} />
+                <input required type="text" name="last_name" placeholder="Last Name *" value={editFormData.last_name || ''} onChange={handleEditChange} style={styles.input} />
+                <input required type="email" name="email" placeholder="Email Address *" value={editFormData.email || ''} onChange={handleEditChange} style={styles.input} />
+                <input required type="tel" name="phone_number" placeholder="Phone Number *" value={editFormData.phone_number || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="date" name="dob" title="Date of Birth" value={editFormData.dob || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="visa_status" placeholder="Visa Status (e.g. H1B)" value={editFormData.visa_status || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="address" placeholder="Full Address" value={editFormData.address || ''} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleEditChange} />
+              </div>
+
+              <h3 style={styles.sectionHeader}>2. Work & Financial Details</h3>
+              <div style={styles.formGrid}>
+                <input type="text" name="role" placeholder="Role (e.g. Software Engineer)" value={editFormData.role || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="date" name="start_date" title="Start Date" value={editFormData.start_date || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="invoice_num" placeholder="Initial Invoice Number" value={editFormData.invoice_num || ''} onChange={handleEditChange} style={styles.input} />
+                
+                <select name="contract_type" value={editFormData.contract_type || 'W2'} onChange={handleEditChange} style={styles.input}>
+                    <option value="W2">W2 (Direct Hire)</option>
+                    <option value="1099">1099 (Contractor)</option>
+                    <option value="C2C">C2C (Corp-to-Corp)</option>
+                </select>
+
+                <div style={styles.rateWrapper} title="Employee Pay Rate">
+                  <span style={styles.currencySymbol}>Pay $</span>
+                  <input required type="number" step="0.01" name="pay_rate" placeholder="0.00" value={editFormData.pay_rate || ''} onChange={handleEditChange} style={styles.rateInput} />
+                </div>
+                <div style={styles.rateWrapper} title="Client Billing Rate">
+                  <span style={styles.currencySymbol}>Bill $</span>
+                  <input required type="number" step="0.01" name="invoice_rate" placeholder="0.00" value={editFormData.invoice_rate || ''} onChange={handleEditChange} style={styles.rateInput} />
+                </div>
+              </div>
+
+              {editFormData.contract_type === 'C2C' && (
+                  <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #4F46E5' }}>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>Corp-to-Corp (C2C) Information</h4>
+                      <div style={styles.formGrid}>
+                          <input required type="text" name="c2c_name" placeholder="C2C Company Name *" value={editFormData.c2c_name || ''} onChange={handleEditChange} style={styles.input} />
+                          <input required type="email" name="c2c_email" placeholder="C2C Email *" value={editFormData.c2c_email || ''} onChange={handleEditChange} style={styles.input} />
+                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" value={editFormData.c2c_phone || ''} onChange={handleEditChange} style={styles.input} />
+                      </div>
+                  </div>
+              )}
+
+              <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
+              <div style={styles.formGrid}>
+                <select name="vendor_name" value={editFormData.vendor_name || ''} onChange={handleEditClientSelect} style={styles.input}>
+                  <option value="">-- Select End Client --</option>
+                  {clients.map(client => (
+                    <option key={client.id} value={client.company_name || client.name}>
+                      {client.company_name || client.name}
+                    </option>
+                  ))}
+                </select>
+                <input type="email" name="vendor_email" value={editFormData.vendor_email || ''} placeholder="Vendor Email" onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="vendor_for" value={editFormData.vendor_for || ''} placeholder="Vendor For (e.g. End Client Name)" onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="net_terms" value={editFormData.net_terms || ''} placeholder="Net Terms (e.g. Net 30)" onChange={handleEditChange} style={styles.input} />
+                <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <label style={{ fontSize: '13px', color: '#6B7280', whiteSpace: 'nowrap' }}>Project Start:</label>
+                    <input type="date" name="project_start_date" value={editFormData.project_start_date || ''} onChange={handleEditChange} style={{...styles.input, flex: 1}} />
+                </div>
+                <input type="text" name="vendor_address" value={editFormData.vendor_address || ''} placeholder="Vendor Address" style={{...styles.input, gridColumn: 'span 2'}} onChange={handleEditChange} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
+                <button type="button" onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
+                <button type="submit" disabled={isSubmitting} style={styles.saveBtn}>
+                    {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* "View Details" Modal */}
       {viewingUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -378,6 +472,7 @@ export default function Contractors() {
         </div>
       )}
 
+      {/* "Add Employee" Modal */}
       {isAddModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -462,6 +557,7 @@ export default function Contractors() {
         </div>
       )}
 
+      {/* "Financial Insights" Modal */}
       {insightUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
@@ -516,8 +612,8 @@ const styles = {
   editInput: { padding: '6px', borderRadius: '4px', border: '1px solid #10B981', width: '90px' },
   insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
   editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
-  saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
-  cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
+  cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   pagination: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', borderTop: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' },
   pageBtn: { padding: '8px 16px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
   pageInfo: { color: '#6B7280', fontSize: '14px' },

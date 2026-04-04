@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
-  const [invoices, setInvoices] = useState([]); // For Financial Insights
+  const [invoices, setInvoices] = useState([]); 
   const [loading, setLoading] = useState(true);
   
   // Search & Pagination
@@ -13,17 +13,21 @@ export default function Clients() {
   // Sorting
   const [sortConfig, setSortConfig] = useState({ key: 'company_name', direction: 'asc' });
 
-  // Add Form State
-  const [newClientName, setNewClientName] = useState('');
-  const [newClientEmail, setNewClientEmail] = useState('');
+  // Modals State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [insightClient, setInsightClient] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Edit State
-  const [editingId, setEditingId] = useState(null);
+  // Form States (Now matching your vendor request!)
+  const initialFormState = {
+    company_name: '',
+    billing_email: '',
+    vendor_address: '',
+    net_terms: 'Net 30'
+  };
+  const [formData, setFormData] = useState(initialFormState);
   const [editFormData, setEditFormData] = useState({});
-  
-  // Insights Modal State
-  const [insightClient, setInsightClient] = useState(null);
 
   useEffect(() => {
     fetchClients();
@@ -50,37 +54,45 @@ export default function Clients() {
     } catch (error) { console.error(error); }
   };
 
+  // --- Handlers for ADD Modal ---
+  const handleAddChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
   const handleAddClient = async (e) => {
     e.preventDefault();
-    if (!newClientName.trim() || !newClientEmail.trim()) return;
+    if (!formData.company_name.trim() || !formData.billing_email.trim()) return;
     
     setIsSubmitting(true);
     try {
       const response = await fetch('http://localhost:5000/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: newClientName, billing_email: newClientEmail })
+        body: JSON.stringify(formData)
       });
       const data = await response.json();
       if (data.success) {
         setClients([...clients, data.data]);
-        setNewClientName(''); 
-        setNewClientEmail('');
+        setFormData(initialFormState); 
+        setIsAddModalOpen(false);
       } else { alert(`❌ Error: ${data.error}`); }
     } catch (error) { alert("❌ Network error."); } finally { setIsSubmitting(false); }
   };
 
+  // --- Handlers for EDIT Modal ---
   const handleEditClick = (client) => {
     setEditingId(client.id);
     setEditFormData({ ...client, is_active: client.is_active !== false }); 
   };
 
-  const handleEditChange = (e, field) => {
+  const handleEditChange = (e) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-    setEditFormData({ ...editFormData, [field]: value });
+    setEditFormData({ ...editFormData, [e.target.name]: value });
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
     try {
       const response = await fetch(`http://localhost:5000/api/clients/${editingId}`, {
         method: 'PUT',
@@ -92,10 +104,10 @@ export default function Clients() {
         setClients(clients.map(c => c.id === editingId ? data.data : c));
         setEditingId(null);
       }
-    } catch (error) { alert("❌ Failed to update client."); }
+    } catch (error) { alert("❌ Failed to update client."); } finally { setIsSubmitting(false); }
   };
 
-  // --- DIAMOND FEATURES ---
+  // --- Utility Functions ---
   const exportToCSV = () => {
     const headers = ['Company Name', 'Billing Email', 'Status', 'System ID'];
     const csvData = clients.map(c => [
@@ -120,7 +132,6 @@ export default function Clients() {
   };
 
   const openInsights = (client) => {
-    // Find all invoices associated with this client's ID or Name
     const clientInvoices = invoices.filter(inv => inv.client_name === client.company_name || inv.client_id === client.id);
     const totalBilled = clientInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
     const totalPaid = clientInvoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
@@ -158,21 +169,9 @@ export default function Clients() {
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={exportToCSV} style={styles.exportBtn}>⬇️ Export CSV</button>
             <input type="text" placeholder="🔍 Search clients..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={styles.searchInput} />
+            <button onClick={() => setIsAddModalOpen(true)} style={styles.addPrimaryBtn}>+ Add Client</button>
           </div>
         </div>
-      </div>
-
-      <div style={styles.card}>
-        <h3 style={{ marginTop: 0, color: '#111827' }}>Add New Client</h3>
-        <form onSubmit={handleAddClient} style={styles.form}>
-          <div style={styles.inputGroup}>
-            <input type="text" placeholder="Company Name (e.g. Acme Corp)" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} style={styles.input} disabled={isSubmitting} required />
-            <input type="email" placeholder="Billing Email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} style={styles.input} disabled={isSubmitting} required />
-            <button type="submit" style={styles.submitBtn} disabled={isSubmitting || !newClientName || !newClientEmail}>
-              {isSubmitting ? 'Adding...' : '+ Add Client'}
-            </button>
-          </div>
-        </form>
       </div>
 
       <div style={styles.tableContainer}>
@@ -198,35 +197,17 @@ export default function Clients() {
               <tbody>
                 {currentItems.map((client) => (
                   <tr key={client.id} style={styles.tableRow}>
-                    {editingId === client.id ? (
-                      <>
-                        <td style={styles.td}><input value={editFormData.company_name} onChange={(e) => handleEditChange(e, 'company_name')} style={styles.editInput} /></td>
-                        <td style={styles.td}><input value={editFormData.billing_email} onChange={(e) => handleEditChange(e, 'billing_email')} style={styles.editInput} /></td>
-                        <td style={styles.td}>
-                           <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}>
-                             <input type="checkbox" checked={editFormData.is_active} onChange={(e) => handleEditChange(e, 'is_active')} /> Active
-                           </label>
-                        </td>
-                        <td style={styles.td}>
-                          <button onClick={handleSaveEdit} style={styles.saveBtn}>Save</button>
-                          <button onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td style={styles.td}><strong>{client.company_name}</strong></td>
-                        <td style={styles.td}>{client.billing_email}</td>
-                        <td style={styles.td}>
-                          <span style={client.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
-                            {client.is_active !== false ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td style={styles.td}>
-                          <button onClick={() => openInsights(client)} style={styles.insightBtn}>📊 Stats</button>
-                          <button onClick={() => handleEditClick(client)} style={styles.editBtn}>Edit</button>
-                        </td>
-                      </>
-                    )}
+                    <td style={styles.td}><strong>{client.company_name}</strong></td>
+                    <td style={styles.td}>{client.billing_email}</td>
+                    <td style={styles.td}>
+                      <span style={client.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
+                        {client.is_active !== false ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <button onClick={() => openInsights(client)} style={styles.insightBtn}>📊 Stats</button>
+                      <button onClick={() => handleEditClick(client)} style={styles.editBtn}>Edit</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -242,6 +223,69 @@ export default function Clients() {
           </>
         )}
       </div>
+
+      {/* --- ADD CLIENT MODAL --- */}
+      {isAddModalOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.largeModalBox}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, color: '#111827' }}>Add New Client / Vendor</h2>
+              <button onClick={() => setIsAddModalOpen(false)} style={styles.closeBtn}>✕</button>
+            </div>
+            
+            <form onSubmit={handleAddClient} style={{ paddingRight: '10px' }}>
+              <h3 style={styles.sectionHeader}>Vendor Details</h3>
+              <div style={styles.formGrid}>
+                <input required type="text" name="company_name" placeholder="Company Name (e.g. Acme Corp) *" value={formData.company_name} onChange={handleAddChange} style={styles.input} />
+                <input required type="email" name="billing_email" placeholder="Billing Email *" value={formData.billing_email} onChange={handleAddChange} style={styles.input} />
+                <input type="text" name="net_terms" placeholder="Net Terms (e.g. Net 30)" value={formData.net_terms} onChange={handleAddChange} style={styles.input} />
+                <input type="text" name="vendor_address" placeholder="Full Vendor Address" value={formData.vendor_address} onChange={handleAddChange} style={{...styles.input, gridColumn: 'span 2'}} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
+                <button type="submit" disabled={isSubmitting} style={styles.addPrimaryBtn}>
+                  {isSubmitting ? 'Saving...' : 'Add Client'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- EDIT CLIENT MODAL --- */}
+      {editingId && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.largeModalBox}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, color: '#111827' }}>Edit Client Details</h2>
+              <button onClick={() => setEditingId(null)} style={styles.closeBtn}>✕</button>
+            </div>
+            
+            <form onSubmit={handleSaveEdit} style={{ paddingRight: '10px' }}>
+              <div style={{ backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" name="is_active" checked={editFormData.is_active !== false} onChange={handleEditChange} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                <label style={{ fontSize: '15px', color: '#111827', fontWeight: 'bold', cursor: 'pointer' }}>Client is Active</label>
+              </div>
+
+              <h3 style={styles.sectionHeader}>Vendor Details</h3>
+              <div style={styles.formGrid}>
+                <input required type="text" name="company_name" placeholder="Company Name *" value={editFormData.company_name || ''} onChange={handleEditChange} style={styles.input} />
+                <input required type="email" name="billing_email" placeholder="Billing Email *" value={editFormData.billing_email || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="net_terms" placeholder="Net Terms (e.g. Net 30)" value={editFormData.net_terms || ''} onChange={handleEditChange} style={styles.input} />
+                <input type="text" name="vendor_address" placeholder="Full Vendor Address" value={editFormData.vendor_address || ''} onChange={handleEditChange} style={{...styles.input, gridColumn: 'span 2'}} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
+                <button type="button" onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
+                <button type="submit" disabled={isSubmitting} style={styles.saveBtn}>
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Financial Insights Dashboard */}
       {insightClient && (
@@ -274,7 +318,7 @@ export default function Clients() {
               </div>
             </div>
             
-            <button onClick={() => setInsightClient(null)} style={{...styles.submitBtn, width: '100%', marginTop: '20px'}}>Close Dashboard</button>
+            <button onClick={() => setInsightClient(null)} style={{...styles.saveBtn, width: '100%', marginTop: '20px'}}>Close Dashboard</button>
           </div>
         </div>
       )}
@@ -287,12 +331,8 @@ const styles = {
   title: { fontSize: '28px', color: '#111827', margin: '0 0 5px 0' },
   subtitle: { color: '#6B7280', margin: 0 },
   exportBtn: { backgroundColor: '#1F2937', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' },
+  addPrimaryBtn: { backgroundColor: '#4F46E5', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
   searchInput: { padding: '10px 15px', borderRadius: '8px', border: '1px solid #D1D5DB', width: '250px', fontSize: '15px' },
-  card: { backgroundColor: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '30px' },
-  form: { display: 'flex', flexDirection: 'column', gap: '15px' },
-  inputGroup: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' },
-  input: { flex: 1, minWidth: '200px', padding: '10px 15px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '15px' },
-  submitBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' },
   tableContainer: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden' },
   table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
   tableHead: { backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' },
@@ -302,17 +342,22 @@ const styles = {
   td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
   badgeActive: { backgroundColor: '#D1FAE5', color: '#047857', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
   badgeInactive: { backgroundColor: '#F3F4F6', color: '#6B7280', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
-  editInput: { padding: '6px', borderRadius: '4px', border: '1px solid #10B981', width: '100%', boxSizing: 'border-box' },
   insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
   editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
-  saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
-  cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   pagination: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', borderTop: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' },
   pageBtn: { padding: '8px 16px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
   pageInfo: { color: '#6B7280', fontSize: '14px' },
+  
+  // Modals & Forms
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
+  largeModalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '600px', maxWidth: '90vw', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
   closeBtn: { background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#9CA3AF' },
+  sectionHeader: { margin: '20px 0 10px 0', color: '#374151', fontSize: '16px', borderBottom: '2px solid #F3F4F6', paddingBottom: '5px' },
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' },
+  input: { padding: '10px 15px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '14px', outline: 'none' },
   statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' },
   statBox: { backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB' },
   statLabel: { margin: 0, fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' },
