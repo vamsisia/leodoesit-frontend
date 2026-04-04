@@ -1,9 +1,13 @@
+<<<<<<< HEAD
+=======
 
+>>>>>>> e8dfeaf00cc54ea0a176515aaa546083ec2696bf
 import { useState, useEffect } from 'react';
 
 export default function Contractors() {
   const [contractors, setContractors] = useState([]);
   const [invoices, setInvoices] = useState([]); 
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -11,9 +15,13 @@ export default function Contractors() {
   const itemsPerPage = 5;
   const [sortConfig, setSortConfig] = useState({ key: 'first_name', direction: 'asc' });
 
-  // --- NEW: Master Form State for the New Employee Modal ---
+  // Modals State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [insightUser, setInsightUser] = useState(null);
+  
+  // --- NEW: State to track which user's details we are viewing ---
+  const [viewingUser, setViewingUser] = useState(null);
   
   const initialFormState = {
     first_name: '', last_name: '', email: '',
@@ -27,11 +35,11 @@ export default function Contractors() {
 
   const [editingId, setEditingId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
-  const [insightUser, setInsightUser] = useState(null);
 
   useEffect(() => {
     fetchContractors();
     fetchInvoices(); 
+    fetchClients();
   }, []);
 
   useEffect(() => {
@@ -54,12 +62,32 @@ export default function Contractors() {
     } catch (error) { console.error(error); }
   };
 
-  // --- NEW: Unified Handle Change for the massive form ---
+  const fetchClients = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/clients');
+      const data = await response.json();
+      if (data.success) setClients(data.data);
+    } catch (error) { 
+      console.error("Failed to fetch clients:", error); 
+    }
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // --- NEW: Submit the giant payload to the backend ---
+  const handleClientSelect = (e) => {
+    const selectedName = e.target.value;
+    const selectedClient = clients.find(c => (c.company_name || c.name) === selectedName);
+    const autoEmail = selectedClient ? (selectedClient.billing_email || selectedClient.email || '') : '';
+
+    setFormData({
+      ...formData,
+      vendor_name: selectedName,
+      vendor_email: autoEmail
+    });
+  };
+
   const handleAddContractor = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -72,7 +100,6 @@ export default function Contractors() {
       const data = await response.json();
       
       if (data.success) {
-        // Refresh the whole list so it pulls down the new joined data!
         fetchContractors();
         setFormData(initialFormState);
         setIsAddModalOpen(false);
@@ -151,6 +178,9 @@ export default function Contractors() {
   };
 
   let processedContractors = contractors.filter(user => {
+    if (user.email === 'admin@leodoesit.com') {
+      return false; 
+    }
     const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
     return searchString.includes(searchTerm.toLowerCase());
   });
@@ -175,6 +205,14 @@ export default function Contractors() {
   const totalPages = Math.ceil(processedContractors.length / itemsPerPage);
   const currentItems = processedContractors.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  // --- NEW: Helper component for the Details Modal ---
+  const DetailItem = ({ label, value }) => (
+    <div style={{ marginBottom: '15px' }}>
+      <div style={{ fontSize: '12px', color: '#6B7280', fontWeight: 'bold', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: '15px', color: '#111827', marginTop: '2px' }}>{value || '—'}</div>
+    </div>
+  );
+
   return (
     <div>
       <div style={styles.header}>
@@ -192,7 +230,6 @@ export default function Contractors() {
               onChange={(e) => setSearchTerm(e.target.value)}
               style={styles.searchInput}
             />
-            {/* The New Admin Button! */}
             <button onClick={() => setIsAddModalOpen(true)} style={styles.addPrimaryBtn}>+ Add Employee</button>
           </div>
         </div>
@@ -238,7 +275,16 @@ export default function Contractors() {
                       </>
                     ) : (
                       <>
-                        <td style={styles.td}><strong>{user.first_name} {user.last_name}</strong></td>
+                        <td style={styles.td}>
+                          {/* --- NEW: Clickable Name --- */}
+                          <strong 
+                            onClick={() => setViewingUser(user)} 
+                            style={{ cursor: 'pointer', color: '#4F46E5' }}
+                            title="Click to view full details"
+                          >
+                            {user.first_name} {user.last_name}
+                          </strong>
+                        </td>
                         <td style={styles.td}>{user.email}</td>
                         <td style={styles.td}>
                           {user.pay_rate != null ? (
@@ -275,9 +321,72 @@ export default function Contractors() {
         )}
       </div>
 
-      {/* ========================================================= */}
-      {/* NEW: THE GIANT ADMIN "ADD EMPLOYEE" DATA ENTRY MODAL      */}
-      {/* ========================================================= */}
+      {/* --- NEW: The "View Details" Modal --- */}
+      {viewingUser && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.largeModalBox}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#111827' }}>{viewingUser.first_name} {viewingUser.last_name}</h2>
+                <span style={{ fontSize: '14px', color: '#6B7280' }}>Employee Details</span>
+              </div>
+              <button onClick={() => setViewingUser(null)} style={styles.closeBtn}>✕</button>
+            </div>
+            
+            <div style={{ overflowY: 'auto', maxHeight: '70vh', paddingRight: '10px' }}>
+              <h3 style={styles.sectionHeader}>Personal Info</h3>
+              <div style={styles.formGrid}>
+                <DetailItem label="Email" value={viewingUser.email} />
+                <DetailItem label="Phone" value={viewingUser.phone_number} />
+                <DetailItem label="DOB" value={viewingUser.dob} />
+                <DetailItem label="Visa Status" value={viewingUser.visa_status} />
+                <div style={{ gridColumn: 'span 2' }}>
+                  <DetailItem label="Address" value={viewingUser.address} />
+                </div>
+              </div>
+
+              <h3 style={styles.sectionHeader}>Work & Financial Details</h3>
+              <div style={styles.formGrid}>
+                <DetailItem label="Role" value={viewingUser.role} />
+                <DetailItem label="Start Date" value={viewingUser.start_date} />
+                <DetailItem label="Contract Type" value={viewingUser.contract_type} />
+                <DetailItem label="Initial Invoice #" value={viewingUser.invoice_num} />
+                <DetailItem label="Pay Rate" value={viewingUser.pay_rate ? `$${viewingUser.pay_rate}` : null} />
+                <DetailItem label="Client Bill Rate" value={viewingUser.invoice_rate ? `$${viewingUser.invoice_rate}` : null} />
+              </div>
+
+              {viewingUser.contract_type === 'C2C' && (
+                <>
+                  <h3 style={styles.sectionHeader}>Corp-to-Corp (C2C) Details</h3>
+                  <div style={styles.formGrid}>
+                    <DetailItem label="C2C Company" value={viewingUser.c2c_name} />
+                    <DetailItem label="C2C Email" value={viewingUser.c2c_email} />
+                    <DetailItem label="C2C Phone" value={viewingUser.c2c_phone} />
+                  </div>
+                </>
+              )}
+
+              <h3 style={styles.sectionHeader}>Vendor / Project Details</h3>
+              <div style={styles.formGrid}>
+                <DetailItem label="Vendor Name" value={viewingUser.vendor_name} />
+                <DetailItem label="Vendor Email" value={viewingUser.vendor_email} />
+                <DetailItem label="Vendor For (End Client)" value={viewingUser.vendor_for} />
+                <DetailItem label="Net Terms" value={viewingUser.net_terms} />
+                <DetailItem label="Project Start Date" value={viewingUser.project_start_date} />
+                <div style={{ gridColumn: 'span 2' }}>
+                  <DetailItem label="Vendor Address" value={viewingUser.vendor_address} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button onClick={() => setViewingUser(null)} style={styles.addPrimaryBtn}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* "Add Employee" Modal */}
       {isAddModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -287,27 +396,23 @@ export default function Contractors() {
             </div>
             
             <form onSubmit={handleAddContractor} style={{ overflowY: 'auto', maxHeight: '70vh', paddingRight: '10px' }}>
-              
-              {/* SECTION 1: Personal Info */}
               <h3 style={styles.sectionHeader}>1. Personal Info</h3>
               <div style={styles.formGrid}>
-                <input required type="text" name="first_name" placeholder="First Name *" onChange={handleChange} style={styles.input} />
-                <input required type="text" name="last_name" placeholder="Last Name *" onChange={handleChange} style={styles.input} />
-                <input required type="email" name="email" placeholder="Email Address *" onChange={handleChange} style={styles.input} />
-                <input required type="tel" name="phone_number" placeholder="Phone Number *" onChange={handleChange} style={styles.input} />
-                <input type="date" name="dob" title="Date of Birth" onChange={handleChange} style={styles.input} />
-                <input type="text" name="visa_status" placeholder="Visa Status (e.g. H1B)" onChange={handleChange} style={styles.input} />
-                <input type="text" name="address" placeholder="Full Address" style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
+                <input required type="text" name="first_name" placeholder="First Name *" value={formData.first_name} onChange={handleChange} style={styles.input} />
+                <input required type="text" name="last_name" placeholder="Last Name *" value={formData.last_name} onChange={handleChange} style={styles.input} />
+                <input required type="email" name="email" placeholder="Email Address *" value={formData.email} onChange={handleChange} style={styles.input} />
+                <input required type="tel" name="phone_number" placeholder="Phone Number *" value={formData.phone_number} onChange={handleChange} style={styles.input} />
+                <input type="date" name="dob" title="Date of Birth" value={formData.dob} onChange={handleChange} style={styles.input} />
+                <input type="text" name="visa_status" placeholder="Visa Status (e.g. H1B)" value={formData.visa_status} onChange={handleChange} style={styles.input} />
+                <input type="text" name="address" placeholder="Full Address" value={formData.address} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
               </div>
 
-              {/* SECTION 2: Work Details & Financials */}
               <h3 style={styles.sectionHeader}>2. Work & Financial Details</h3>
               <div style={styles.formGrid}>
-                <input type="text" name="role" placeholder="Role (e.g. Software Engineer)" onChange={handleChange} style={styles.input} />
-                <input type="date" name="start_date" title="Start Date" onChange={handleChange} style={styles.input} />
-                <input type="text" name="invoice_num" placeholder="Initial Invoice Number" onChange={handleChange} style={styles.input} />
+                <input type="text" name="role" placeholder="Role (e.g. Software Engineer)" value={formData.role} onChange={handleChange} style={styles.input} />
+                <input type="date" name="start_date" title="Start Date" value={formData.start_date} onChange={handleChange} style={styles.input} />
+                <input type="text" name="invoice_num" placeholder="Initial Invoice Number" value={formData.invoice_num} onChange={handleChange} style={styles.input} />
                 
-                {/* The Contract Type Dropdown */}
                 <select name="contract_type" value={formData.contract_type} onChange={handleChange} style={styles.input}>
                     <option value="W2">W2 (Direct Hire)</option>
                     <option value="1099">1099 (Contractor)</option>
@@ -316,38 +421,43 @@ export default function Contractors() {
 
                 <div style={styles.rateWrapper} title="Employee Pay Rate">
                   <span style={styles.currencySymbol}>Pay $</span>
-                  <input required type="number" step="0.01" name="pay_rate" placeholder="0.00" onChange={handleChange} style={styles.rateInput} />
+                  <input required type="number" step="0.01" name="pay_rate" placeholder="0.00" value={formData.pay_rate} onChange={handleChange} style={styles.rateInput} />
                 </div>
                 <div style={styles.rateWrapper} title="Client Billing Rate">
                   <span style={styles.currencySymbol}>Bill $</span>
-                  <input required type="number" step="0.01" name="invoice_rate" placeholder="0.00" onChange={handleChange} style={styles.rateInput} />
+                  <input required type="number" step="0.01" name="invoice_rate" placeholder="0.00" value={formData.invoice_rate} onChange={handleChange} style={styles.rateInput} />
                 </div>
               </div>
 
-              {/* CONDITIONAL SECTION: C2C Specifics */}
               {formData.contract_type === 'C2C' && (
                   <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #4F46E5' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>Corp-to-Corp (C2C) Information</h4>
                       <div style={styles.formGrid}>
-                          <input required type="text" name="c2c_name" placeholder="C2C Company Name *" onChange={handleChange} style={styles.input} />
-                          <input required type="email" name="c2c_email" placeholder="C2C Email *" onChange={handleChange} style={styles.input} />
-                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" onChange={handleChange} style={styles.input} />
+                          <input required type="text" name="c2c_name" placeholder="C2C Company Name *" value={formData.c2c_name} onChange={handleChange} style={styles.input} />
+                          <input required type="email" name="c2c_email" placeholder="C2C Email *" value={formData.c2c_email} onChange={handleChange} style={styles.input} />
+                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" value={formData.c2c_phone} onChange={handleChange} style={styles.input} />
                       </div>
                   </div>
               )}
 
-              {/* SECTION 3: Vendor Details */}
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
-                <input type="text" name="vendor_name" placeholder="Vendor Name" onChange={handleChange} style={styles.input} />
-                <input type="email" name="vendor_email" placeholder="Vendor Email" onChange={handleChange} style={styles.input} />
-                <input type="text" name="vendor_for" placeholder="Vendor For (e.g. End Client Name)" onChange={handleChange} style={styles.input} />
-                <input type="text" name="net_terms" placeholder="Net Terms (e.g. Net 30)" defaultValue="Net 30" onChange={handleChange} style={styles.input} />
+                <select name="vendor_name" value={formData.vendor_name} onChange={handleClientSelect} style={styles.input}>
+                  <option value="">-- Select End Client --</option>
+                  {clients.map(client => (
+                    <option key={client.id} value={client.company_name || client.name}>
+                      {client.company_name || client.name}
+                    </option>
+                  ))}
+                </select>
+                <input type="email" name="vendor_email" value={formData.vendor_email} placeholder="Vendor Email" onChange={handleChange} style={styles.input} />
+                <input type="text" name="vendor_for" value={formData.vendor_for} placeholder="Vendor For (e.g. End Client Name)" onChange={handleChange} style={styles.input} />
+                <input type="text" name="net_terms" value={formData.net_terms} placeholder="Net Terms (e.g. Net 30)" onChange={handleChange} style={styles.input} />
                 <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <label style={{ fontSize: '13px', color: '#6B7280', whiteSpace: 'nowrap' }}>Project Start:</label>
-                    <input type="date" name="project_start_date" onChange={handleChange} style={{...styles.input, flex: 1}} />
+                    <input type="date" name="project_start_date" value={formData.project_start_date} onChange={handleChange} style={{...styles.input, flex: 1}} />
                 </div>
-                <input type="text" name="vendor_address" placeholder="Vendor Address" style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
+                <input type="text" name="vendor_address" value={formData.vendor_address} placeholder="Vendor Address" style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
@@ -361,7 +471,7 @@ export default function Contractors() {
         </div>
       )}
 
-      {/* Financial Insights Modal */}
+      {/* "Financial Insights" Modal */}
       {insightUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
