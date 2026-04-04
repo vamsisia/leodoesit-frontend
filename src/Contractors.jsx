@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-
->>>>>>> e8dfeaf00cc54ea0a176515aaa546083ec2696bf
 import { useState, useEffect } from 'react';
 
 export default function Contractors() {
@@ -20,7 +16,6 @@ export default function Contractors() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [insightUser, setInsightUser] = useState(null);
   
-  // --- NEW: State to track which user's details we are viewing ---
   const [viewingUser, setViewingUser] = useState(null);
   
   const initialFormState = {
@@ -205,7 +200,6 @@ export default function Contractors() {
   const totalPages = Math.ceil(processedContractors.length / itemsPerPage);
   const currentItems = processedContractors.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // --- NEW: Helper component for the Details Modal ---
   const DetailItem = ({ label, value }) => (
     <div style={{ marginBottom: '15px' }}>
       <div style={{ fontSize: '12px', color: '#6B7280', fontWeight: 'bold', textTransform: 'uppercase' }}>{label}</div>
@@ -276,7 +270,6 @@ export default function Contractors() {
                     ) : (
                       <>
                         <td style={styles.td}>
-                          {/* --- NEW: Clickable Name --- */}
                           <strong 
                             onClick={() => setViewingUser(user)} 
                             style={{ cursor: 'pointer', color: '#4F46E5' }}
@@ -321,7 +314,6 @@ export default function Contractors() {
         )}
       </div>
 
-      {/* --- NEW: The "View Details" Modal --- */}
       {viewingUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -386,7 +378,6 @@ export default function Contractors() {
         </div>
       )}
 
-      {/* "Add Employee" Modal */}
       {isAddModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -471,7 +462,6 @@ export default function Contractors() {
         </div>
       )}
 
-      {/* "Financial Insights" Modal */}
       {insightUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
