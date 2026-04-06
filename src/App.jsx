@@ -68,9 +68,16 @@ export default function App() {
 const handleFinalSubmit = async () => {
   setIsSubmitting(true);
   try {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - 14);
+    // 🔥 REAL-WORLD FIX: Force exact calendar month boundaries for the PREVIOUS month
+    const today = new Date();
+    // Get the year and month of exactly one month ago
+    const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const year = prevDate.getFullYear();
+    const month = prevDate.getMonth();
+
+    // Lock start date to the 1st, and end date to the exact last day of that month
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0);
 
     const formData = new FormData();
     formData.append('user_id', user.id);

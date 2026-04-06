@@ -465,6 +465,11 @@ export default function InvoiceLedger() {
 
   // --- UI STATE ---
   const [searchTerm, setSearchTerm] = useState('');
+
+  // 🔥 NEW FILTER STATE
+  const [filterMonth, setFilterMonth] = useState('ALL');
+  const [filterYear, setFilterYear] = useState('ALL');
+
   const [activeTab, setActiveTab] = useState('UNPAID'); // 'ALL', 'UNPAID', 'PAID'
   const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
@@ -600,11 +605,24 @@ export default function InvoiceLedger() {
   const totalOutstanding = invoices.filter(i => i.status !== 'PAID').reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
 
   let processedInvoices = invoices.filter(inv => {
+    // 1. Check Search and Tabs
     const matchesSearch = `${inv.client_name} ${inv.invoice_number} ${inv.first_name}`.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTab = activeTab === 'ALL' ? true : (activeTab === 'PAID' ? inv.status === 'PAID' : inv.status !== 'PAID');
-    return matchesSearch && matchesTab;
-  });
+    
+    // 2. Check Month/Year Filter (Based on the Invoice Generation Date)
+    let matchesDate = true;
+    if (filterMonth !== 'ALL' || filterYear !== 'ALL') {
+      const invDate = new Date(inv.created_at || Date.now());
+      const invMonth = String(invDate.getMonth() + 1).padStart(2, '0'); 
+      const invYear = String(invDate.getFullYear());
 
+      const matchMonth = filterMonth === 'ALL' || invMonth === filterMonth;
+      const matchYear = filterYear === 'ALL' || invYear === filterYear;
+      matchesDate = matchMonth && matchYear;
+    }
+
+    return matchesSearch && matchesTab && matchesDate;
+  });
   processedInvoices.sort((a, b) => {
     let valA = a[sortConfig.key]; let valB = b[sortConfig.key];
     if (sortConfig.key === 'amount_invoiced') { valA = parseFloat(valA || 0); valB = parseFloat(valB || 0); } 
@@ -633,6 +651,16 @@ export default function InvoiceLedger() {
     e.stopPropagation();
     setSelectedInvoices(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
+
+
+  const currentYear = new Date().getFullYear();
+  const availableYears = [];
+  for (let year = 2025; year <= currentYear + 1; year++) {
+    availableYears.push(year);
+  }
+
+
+
 
   return (
     <div style={{ position: 'relative' }}>
@@ -668,14 +696,40 @@ export default function InvoiceLedger() {
 
       <div style={styles.tableContainer}>
         {/* ACTION BAR */}
+       {/* ACTION BAR */}
         <div style={styles.actionBar}>
-          <input 
-            type="text" 
-            placeholder="🔍 Search client or contractor..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={styles.searchInput}
-          />
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} style={styles.searchInput}>
+              <option value="ALL">All Months</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            
+            <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} style={styles.searchInput}>
+              <option value="ALL">All Years</option>
+              {availableYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+
+            <input 
+              type="text" 
+              placeholder="🔍 Search client or contractor..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={styles.searchInput}
+            />
+          </div>
           
           {/* BULK ACTIONS */}
           {selectedInvoices.length > 0 && (

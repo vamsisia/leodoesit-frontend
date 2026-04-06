@@ -39,6 +39,10 @@ export default function AdminDashboard() {
   // --- EXISTING VIEW STATE ---
   const [viewMode, setViewMode] = useState('PENDING'); 
   const [searchTerm, setSearchTerm] = useState('');
+
+  const [filterMonth, setFilterMonth] = useState('ALL');
+  const [filterYear, setFilterYear] = useState('ALL');
+
   const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
   const [selectedIds, setSelectedIds] = useState([]);
 
@@ -71,7 +75,6 @@ export default function AdminDashboard() {
   const fetchLiveHolidays = async () => {
     try {
       const currentYear = new Date().getFullYear();
-      
       // We fetch this year AND last year just in case timesheets cross over January 1st
       const [thisYearRes, lastYearRes] = await Promise.all([
         fetch(`https://date.nager.at/api/v3/PublicHolidays/${currentYear}/US`),
@@ -197,15 +200,46 @@ export default function AdminDashboard() {
   };
 
   // --- LOGIC ENGINE ---
+  // let filteredList = timesheets.filter(ts => {
+  //   if (viewMode === 'PENDING') return ts.status === 'SUBMITTED';
+  //   return ts.status === 'APPROVED' || ts.status === 'REJECTED'; 
+  // });
+
+  // --- LOGIC ENGINE ---
   let filteredList = timesheets.filter(ts => {
     if (viewMode === 'PENDING') return ts.status === 'SUBMITTED';
     return ts.status === 'APPROVED' || ts.status === 'REJECTED'; 
   });
 
+  // 🔥 THE OPTION B FILTER LOGIC 
+  if (viewMode === 'HISTORY') {
+    filteredList = filteredList.filter(ts => {
+      // If Admin hasn't selected anything, show all
+      if (filterMonth === 'ALL' && filterYear === 'ALL') return true;
+      
+      // Look at the strict Billing Period Start Date
+      const tsDate = new Date(ts.period_start);
+      // Format to "01", "02", etc.
+      const tsMonth = String(tsDate.getMonth() + 1).padStart(2, '0'); 
+      const tsYear = String(tsDate.getFullYear());
+
+      // Check if it matches the dropdowns
+      const matchMonth = filterMonth === 'ALL' || tsMonth === filterMonth;
+      const matchYear = filterYear === 'ALL' || tsYear === filterYear;
+
+      return matchMonth && matchYear;
+    });
+  }
+
   filteredList = filteredList.filter(ts => {
     const searchString = `${ts.first_name} ${ts.last_name}`.toLowerCase();
     return searchString.includes(searchTerm.toLowerCase());
   });
+
+  // filteredList = filteredList.filter(ts => {
+  //   const searchString = `${ts.first_name} ${ts.last_name}`.toLowerCase();
+  //   return searchString.includes(searchTerm.toLowerCase());
+  // });
 
   filteredList.sort((a, b) => {
     let valA = a[sortConfig.key]; let valB = b[sortConfig.key];
@@ -221,6 +255,12 @@ export default function AdminDashboard() {
     ? (modalConfig.isBulk ? timesheets.filter(ts => selectedIds.includes(ts.id)) : timesheets.filter(ts => ts.id === modalConfig.targetId))
     : [];
 
+    const currentYear = new Date().getFullYear();
+    const availableYears = [];
+    for (let year = 2025; year <= currentYear + 1; year++) {
+      availableYears.push(year);
+    }
+
   return (
     <div style={{ position: 'relative' }}>
       <div style={styles.header}>
@@ -229,7 +269,7 @@ export default function AdminDashboard() {
             <h1 style={styles.title}>Approval Queue</h1>
             <p style={styles.subtitle}>Review contractor hours and verify proof of work before invoicing.</p>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <div style={styles.toggleGroup}>
               <button onClick={() => setViewMode('PENDING')} style={viewMode === 'PENDING' ? styles.toggleActive : styles.toggleInactive}>
                 Action Required
@@ -238,6 +278,35 @@ export default function AdminDashboard() {
                 Review History
               </button>
             </div>
+            
+            {/* 🔥 NEW DROPDOWNS (Only show in History mode) */}
+            {viewMode === 'HISTORY' && (
+              <>
+                <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} style={styles.searchInput}>
+                  <option value="ALL">All Months</option>
+                  <option value="01">January</option>
+                  <option value="02">February</option>
+                  <option value="03">March</option>
+                  <option value="04">April</option>
+                  <option value="05">May</option>
+                  <option value="06">June</option>
+                  <option value="07">July</option>
+                  <option value="08">August</option>
+                  <option value="09">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+                
+                <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} style={styles.searchInput}>
+                <option value="ALL">All Years</option>
+                {availableYears.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              </>
+            )}
+
             <input 
               type="text" 
               placeholder="🔍 Search name..." 
