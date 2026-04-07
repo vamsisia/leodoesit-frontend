@@ -41,24 +41,42 @@ export default function Contractors() {
   }, [searchTerm]);
 
   const fetchContractors = async () => {
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      const response = await fetch('http://localhost:5000/api/users');
+      const response = await fetch('http://localhost:5000/api/users', {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': admin?.tenant_id 
+        }
+      });
       const data = await response.json();
       if (data.success) setContractors(data.data);
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
   const fetchInvoices = async () => {
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      const response = await fetch('http://localhost:5000/api/invoices');
+      const response = await fetch('http://localhost:5000/api/invoices', {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': admin?.tenant_id 
+        }
+      });
       const data = await response.json();
       if (data.success) setInvoices(data.data);
     } catch (error) { console.error(error); }
   };
 
   const fetchClients = async () => {
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      const response = await fetch('http://localhost:5000/api/clients');
+      const response = await fetch('http://localhost:5000/api/clients', {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': admin?.tenant_id 
+        }
+      });
       const data = await response.json();
       if (data.success) setClients(data.data);
     } catch (error) { 
@@ -66,40 +84,54 @@ export default function Contractors() {
     }
   };
 
+  // --- MEMORY WIPE FUNCTIONS ---
+  const handleCloseAddModal = () => {
+    setIsAddModalOpen(false);
+    setFormData(initialFormState); 
+  };
+
+  const handleCloseEditModal = () => {
+    setEditingId(null);
+    setEditFormData({}); 
+  };
+
   // --- Handlers for Add Form ---
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // 🌟 THE AUTO-FILL MAGIC FOR "ADD EMPLOYEE" 🌟
   const handleClientSelect = (e) => {
     const selectedName = e.target.value;
-    const selectedClient = clients.find(c => (c.company_name || c.name) === selectedName);
+    const selectedClient = clients.find(c => 
+      String(c.company_name || c.name).trim() === String(selectedName).trim()
+    );
 
     setFormData({
       ...formData,
       vendor_name: selectedName,
-      vendor_email: selectedClient ? (selectedClient.billing_email || '') : '',
+      vendor_email: selectedClient ? (selectedClient.billing_email || selectedClient.email || '') : '',
       net_terms: selectedClient ? (selectedClient.net_terms || 'Net 30') : 'Net 30',
-      vendor_address: selectedClient ? (selectedClient.vendor_address || '') : ''
+      vendor_address: selectedClient ? (selectedClient.vendor_address || selectedClient.address || '') : ''
     });
   };
 
   const handleAddContractor = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
+
     try {
       const response = await fetch('http://localhost:5000/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, tenant_id: admin?.tenant_id })
       });
       const data = await response.json();
       
       if (data.success) {
         fetchContractors();
-        setFormData(initialFormState);
-        setIsAddModalOpen(false);
+        handleCloseAddModal(); // Safely close and clear
       } else {
         alert("❌ Failed: " + data.error);
       }
@@ -121,17 +153,18 @@ export default function Contractors() {
     setEditFormData({ ...editFormData, [e.target.name]: value });
   };
 
-  // 🌟 THE AUTO-FILL MAGIC FOR "EDIT EMPLOYEE" 🌟
   const handleEditClientSelect = (e) => {
     const selectedName = e.target.value;
-    const selectedClient = clients.find(c => (c.company_name || c.name) === selectedName);
+    const selectedClient = clients.find(c => 
+      String(c.company_name || c.name).trim() === String(selectedName).trim()
+    );
 
     setEditFormData({
       ...editFormData,
       vendor_name: selectedName,
-      vendor_email: selectedClient ? (selectedClient.billing_email || '') : '',
+      vendor_email: selectedClient ? (selectedClient.billing_email || selectedClient.email || '') : '',
       net_terms: selectedClient ? (selectedClient.net_terms || 'Net 30') : 'Net 30',
-      vendor_address: selectedClient ? (selectedClient.vendor_address || '') : ''
+      vendor_address: selectedClient ? (selectedClient.vendor_address || selectedClient.address || '') : ''
     });
   };
 
@@ -147,7 +180,7 @@ export default function Contractors() {
       const data = await response.json();
       if (data.success) {
         setContractors(contractors.map(c => c.id === editingId ? { ...c, ...data.data } : c));
-        setEditingId(null);
+        handleCloseEditModal(); // Safely close and clear
       }
     } catch (error) { alert("❌ Failed to update contractor."); } finally { setIsSubmitting(false); }
   };
@@ -163,7 +196,7 @@ export default function Contractors() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'LeodoesIt_Team_Roster.csv');
+    link.setAttribute('download', 'Team_Roster.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -192,7 +225,7 @@ export default function Contractors() {
   };
 
   let processedContractors = contractors.filter(user => {
-    if (user.email === 'admin@leodoesit.com') {
+    if (user.role === 'ADMIN') {
       return false; 
     }
     const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
@@ -315,18 +348,17 @@ export default function Contractors() {
         )}
       </div>
 
-      {/* --- NEW: The "Edit Employee" Modal --- */}
+      {/* --- The "Edit Employee" Modal --- */}
       {editingId && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, color: '#111827' }}>Edit Employee Record</h2>
-              <button onClick={() => setEditingId(null)} style={styles.closeBtn}>✕</button>
+              <button onClick={handleCloseEditModal} style={styles.closeBtn}>✕</button>
             </div>
             
             <form onSubmit={handleSaveEdit} style={{ overflowY: 'auto', maxHeight: '70vh', paddingRight: '10px' }}>
               
-              {/* --- ACTIVE STATUS CHECKBOX --- */}
               <div style={{ backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <input type="checkbox" name="is_active" checked={editFormData.is_active !== false} onChange={handleEditChange} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
                 <label style={{ fontSize: '15px', color: '#111827', fontWeight: 'bold', cursor: 'pointer' }}>Employee is Active</label>
@@ -397,7 +429,7 @@ export default function Contractors() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
-                <button type="button" onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
+                <button type="button" onClick={handleCloseEditModal} style={styles.cancelBtn}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={styles.saveBtn}>
                     {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -478,7 +510,7 @@ export default function Contractors() {
           <div style={styles.largeModalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, color: '#111827' }}>Create New Employee Record</h2>
-              <button onClick={() => setIsAddModalOpen(false)} style={styles.closeBtn}>✕</button>
+              <button onClick={handleCloseAddModal} style={styles.closeBtn}>✕</button>
             </div>
             
             <form onSubmit={handleAddContractor} style={{ overflowY: 'auto', maxHeight: '70vh', paddingRight: '10px' }}>
@@ -547,7 +579,7 @@ export default function Contractors() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
-                <button type="button" onClick={() => setIsAddModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
+                <button type="button" onClick={handleCloseAddModal} style={styles.cancelBtn}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={styles.addPrimaryBtn}>
                     {isSubmitting ? 'Saving to Database...' : 'Create Employee Record'}
                 </button>
@@ -591,8 +623,6 @@ export default function Contractors() {
     </div>
   );
 }
-
-
 
 const styles = {
   header: { marginBottom: '30px' },
