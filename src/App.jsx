@@ -156,7 +156,7 @@ const handleLogout = () => {
                   <h2 style={{ margin: 0, color: '#059669' }}>✅ Approved & Invoiced</h2>
                 )}
 
-                <div style={styles.statsGrid}>
+                <div style={styles.statsGrid }>
                   <div>
                     <p style={styles.gridLabel}>Hours Logged</p>
                     <p style={styles.gridValue}>{latestTimesheet.total_hours} hrs</p>
@@ -166,12 +166,12 @@ const handleLogout = () => {
   <p style={styles.gridLabel}>Hourly Rate</p>
   <p style={styles.gridValue}>${parseFloat(user.pay_rate).toFixed(2)} / hr</p>
                   </div>
-                  <div>
+                  {/* <div>
                     <p style={styles.gridLabel}>Projected Payout</p>
                     <p style={{...styles.gridValue, color: '#10B981'}}>
                       ${(parseFloat(latestTimesheet.total_hours) * parseFloat(user.pay_rate)).toFixed(2)}
                     </p>
-                  </div>
+                  </div> */}
                 </div>
               </div>
               <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '13px', marginTop: '20px' }}>
@@ -284,7 +284,7 @@ const styles = {
   statusHeader: { textAlign: 'center', marginBottom: '30px' },
   statusBox: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '30px', textAlign: 'center' },
   statusLabel: { fontSize: '12px', textTransform: 'uppercase', color: '#6B7280', fontWeight: 'bold', letterSpacing: '1px', margin: '0 0 10px 0' },
-  statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginTop: '30px', borderTop: '1px solid #E5E7EB', paddingTop: '30px' },
+  statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '30px', borderTop: '1px solid #E5E7EB', paddingTop: '30px' },
   gridLabel: { margin: '0 0 5px 0', fontSize: '13px', color: '#6B7280' },
   gridValue: { margin: 0, fontSize: '20px', color: '#111827', fontWeight: 'bold' }
 };

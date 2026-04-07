@@ -12,14 +12,14 @@ export default function ConfirmationModal({ isOpen, onClose, onConfirm, hours, p
         </p>
 
         <div style={modalStyles.summaryBox}>
-          <div>
+        <div style={{ textAlign: 'center', width: '100%' }}>
             <p style={modalStyles.label}>Hours Logged</p>
             <p style={modalStyles.value}>{hours} hrs</p>
           </div>
-          <div style={{ textAlign: 'right' }}>
+          {/* <div style={{ textAlign: 'right' }}>
             <p style={modalStyles.label}>Projected Payout</p>
             <p style={{ ...modalStyles.value, color: '#10B981' }}>${payout}</p>
-          </div>
+          </div> */}
         </div>
 
         <div style={modalStyles.buttonRow}>
@@ -48,7 +48,7 @@ const modalStyles = {
   card: { backgroundColor: 'white', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
   title: { margin: '0 0 10px 0', fontSize: '20px', color: '#111827' },
   text: { margin: '0 0 20px 0', fontSize: '14px', color: '#4B5563', lineHeight: '1.5' },
-  summaryBox: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px' },
+  summaryBox: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'center', marginBottom: '20px' },
   label: { margin: '0 0 5px 0', fontSize: '12px', fontWeight: 'bold', color: '#6B7280', textTransform: 'uppercase' },
   value: { margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#111827' },
   buttonRow: { display: 'flex', justifyContent: 'flex-end', gap: '10px' },
