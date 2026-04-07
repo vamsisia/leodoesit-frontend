@@ -23,7 +23,8 @@ export default function Contractors() {
     role: '', start_date: '', invoice_num: '', contract_type: 'W2',
     pay_rate: '', invoice_rate: '',
     c2c_name: '', c2c_email: '', c2c_phone: '',
-    vendor_name: '', vendor_email: '', vendor_address: '', vendor_for: '', project_start_date: '', net_terms: 'Net 30'
+    vendor_name: '', vendor_email: '', vendor_address: '', vendor_for: '', project_start_date: '', net_terms: 'Net 30',
+    i9_completed: false, w4_completed: false, everify_completed: false, bank_details_completed: false
   };
   const [formData, setFormData] = useState(initialFormState);
 
@@ -293,6 +294,16 @@ export default function Contractors() {
                         <span style={user.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
                           {user.contract_type || 'W2'} - {user.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
+                        {(user.contract_type === 'W2' || !user.contract_type) && (
+                          (() => {
+                            const completed = [user.i9_completed, user.w4_completed, user.everify_completed, user.bank_details_completed].filter(Boolean).length;
+                            return (
+                              <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '10px', backgroundColor: completed === 4 ? '#D1FAE5' : '#FEF3C7', color: completed === 4 ? '#065F46' : '#92400E' }}>
+                                {completed === 4 ? '✅ Docs: 4/4' : `⚠️ Docs: ${completed}/4`}
+                              </span>
+                            );
+                          })()
+                        )}
                       </div>
                     </td>
                     <td style={styles.td}>
@@ -376,6 +387,35 @@ export default function Contractors() {
                   </div>
               )}
 
+{editFormData.contract_type === 'C2C' && (
+                  <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #4F46E5' }}>
+                      {/* ... C2C stuff ... */}
+                  </div>
+              )}
+
+              {/* --- EDIT FORM: W2 COMPLIANCE INTERACTIVE --- */}
+              {editFormData.contract_type === 'W2' && (
+                  <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #10B981' }}>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>W2 Onboarding Compliance</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="i9_completed" checked={editFormData.i9_completed || false} onChange={handleEditChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> I-9 Form Completed
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="w4_completed" checked={editFormData.w4_completed || false} onChange={handleEditChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> W-4 Form Completed
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="everify_completed" checked={editFormData.everify_completed || false} onChange={handleEditChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> E-Verify Cleared
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="bank_details_completed" checked={editFormData.bank_details_completed || false} onChange={handleEditChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> Bank Details Submitted
+                        </label>
+                      </div>
+                  </div>
+              )}
+
+              <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
+
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
                 <select name="vendor_name" value={editFormData.vendor_name || ''} onChange={handleEditClientSelect} style={styles.input}>
@@ -441,6 +481,32 @@ export default function Contractors() {
                 <DetailItem label="Client Bill Rate" value={viewingUser.invoice_rate ? `$${viewingUser.invoice_rate}` : null} />
               </div>
 
+            {/* --- VIEW ONLY: W2 COMPLIANCE (READ-ONLY) --- */}
+            {(viewingUser.contract_type === 'W2' || !viewingUser.contract_type) && (
+                <>
+                  <h3 style={styles.sectionHeader}>W2 Onboarding Compliance</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
+                    
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', color: '#6B7280', fontWeight: '500' }}>
+                      <input type="checkbox" checked={viewingUser.i9_completed || false} disabled style={{ width: '18px', height: '18px', cursor: 'not-allowed' }} />
+                      I-9 Form Completed
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', color: '#6B7280', fontWeight: '500' }}>
+                      <input type="checkbox" checked={viewingUser.w4_completed || false} disabled style={{ width: '18px', height: '18px', cursor: 'not-allowed' }} />
+                      W-4 Form Completed
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', color: '#6B7280', fontWeight: '500' }}>
+                      <input type="checkbox" checked={viewingUser.everify_completed || false} disabled style={{ width: '18px', height: '18px', cursor: 'not-allowed' }} />
+                      E-Verify Cleared
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', color: '#6B7280', fontWeight: '500' }}>
+                      <input type="checkbox" checked={viewingUser.bank_details_completed || false} disabled style={{ width: '18px', height: '18px', cursor: 'not-allowed' }} />
+                      Bank Details Submitted
+                    </label>
+
+                  </div>
+                </>
+              )}
               {viewingUser.contract_type === 'C2C' && (
                 <>
                   <h3 style={styles.sectionHeader}>Corp-to-Corp (C2C) Details</h3>
@@ -526,6 +592,27 @@ export default function Contractors() {
                   </div>
               )}
 
+              {/* --- ADD FORM: W2 COMPLIANCE INTERACTIVE --- */}
+              {formData.contract_type === 'W2' && (
+                  <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #10B981' }}>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>W2 Onboarding Compliance</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="i9_completed" checked={formData.i9_completed} onChange={handleChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> I-9 Form Completed
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="w4_completed" checked={formData.w4_completed} onChange={handleChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> W-4 Form Completed
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="everify_completed" checked={formData.everify_completed} onChange={handleChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> E-Verify Cleared
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#374151', fontSize: '14px' }}>
+                          <input type="checkbox" name="bank_details_completed" checked={formData.bank_details_completed} onChange={handleChange} style={{ width: '16px', height: '16px', cursor: 'pointer' }} /> Bank Details Submitted
+                        </label>
+                      </div>
+                  </div>
+              )}
+             
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
                 <select name="vendor_name" value={formData.vendor_name} onChange={handleClientSelect} style={styles.input}>
