@@ -18,7 +18,6 @@ export default function InvoicingHub() {
   const [modalConfig, setModalConfig] = useState({ isOpen: false, action: '', targetId: null, targetClientId: null });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // For the Smart Empty State button
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,12 +28,17 @@ export default function InvoicingHub() {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  // --- 🔥 SECURITY HANDSHAKE APPLIED HERE ---
   const fetchHubData = async () => {
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      // Fetch BOTH approved timesheets and your active clients simultaneously!
       const [tsResponse, clientsResponse] = await Promise.all([
-        fetch('http://localhost:5000/api/timesheets?status=APPROVED'),
-        fetch('http://localhost:5000/api/clients')
+        fetch('http://localhost:5000/api/timesheets?status=APPROVED', {
+          headers: { 'x-tenant-id': admin?.tenant_id } // Handshake 1
+        }),
+        fetch('http://localhost:5000/api/clients', {
+          headers: { 'x-tenant-id': admin?.tenant_id } // Handshake 2
+        })
       ]);
       
       const tsData = await tsResponse.json();
@@ -42,7 +46,6 @@ export default function InvoicingHub() {
       
       if (tsData.success) setTimesheets(tsData.data);
       if (clientsData.success) {
-        // Only allow billing to Active clients!
         setClients(clientsData.data.filter(c => c.is_active !== false));
       }
     } catch (error) {
@@ -64,13 +67,21 @@ export default function InvoicingHub() {
     }
   };
 
+  // --- 🔥 SECURITY HANDSHAKE APPLIED HERE ---
   const executeGenerateInvoice = async (timesheetId, clientId) => {
     setIsProcessing(true);
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
+
     try {
       const response = await fetch('http://localhost:5000/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timesheet_id: timesheetId, client_id: clientId })
+        // We pass the tenant_id in the body so the backend can attach it to the invoice!
+        body: JSON.stringify({ 
+          timesheet_id: timesheetId, 
+          client_id: clientId,
+          tenant_id: admin?.tenant_id 
+        })
       });
       
       const data = await response.json();
