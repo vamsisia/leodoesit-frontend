@@ -7,6 +7,7 @@ export default function Contractors() {
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [visaFilter, setVisaFilter] = useState('All'); // <-- NEW VISA FILTER STATE
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   const [sortConfig, setSortConfig] = useState({ key: 'first_name', direction: 'asc' });
@@ -23,7 +24,7 @@ export default function Contractors() {
     role: '', start_date: '', invoice_num: '', contract_type: 'W2',
     pay_rate: '', invoice_rate: '',
     c2c_name: '', c2c_email: '', c2c_phone: '',
-    vendor_name: '', vendor_email: '', vendor_address: '', vendor_for: '', project_start_date: '', net_terms: 'Net 30',
+    vendor_name: '', vendor_email: '', vendor_address: '', vendor_for: '', project_start_date: '', project_end_date: '', net_terms: 'Net 30',
     i9_completed: false, w4_completed: false, everify_completed: false, bank_details_completed: false
   };
   const [formData, setFormData] = useState(initialFormState);
@@ -196,8 +197,16 @@ export default function Contractors() {
     if (user.email === 'admin@leodoesit.com') {
       return false; 
     }
+    
+    // 1. Check Search Term
     const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
-    return searchString.includes(searchTerm.toLowerCase());
+    const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+
+    // 2. Check Visa Filter (If 'All' is selected, everyone passes. Otherwise, it must match exactly)
+    const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
+
+    // Must pass both tests to show up on the screen!
+    return matchesSearch && matchesVisa;
   });
 
   processedContractors.sort((a, b) => {
@@ -237,6 +246,24 @@ export default function Contractors() {
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={exportToCSV} style={styles.exportBtn}>⬇️ Export CSV</button>
+            
+            {/* --- NEW VISA DROPDOWN --- */}
+            <select 
+              value={visaFilter} 
+              onChange={(e) => setVisaFilter(e.target.value)}
+              style={styles.searchInput}
+            >
+              <option value="All">All Visas</option>
+              <option value="US Citizen">US Citizen</option>
+              <option value="Green Card">Green Card (GC)</option>
+              <option value="H1B">H1B</option>
+              <option value="OPT">OPT</option>
+              <option value="CPT">CPT</option>
+              <option value="H4 EAD">H4 EAD</option>
+              <option value="Other">Other</option>
+            </select>
+            {/* ------------------------- */}
+
             <input 
               type="text" 
               placeholder="🔍 Search team..." 
@@ -246,6 +273,7 @@ export default function Contractors() {
             />
             <button onClick={() => setIsAddModalOpen(true)} style={styles.addPrimaryBtn}>+ Add Employee</button>
           </div>
+         
         </div>
       </div>
 
@@ -349,9 +377,18 @@ export default function Contractors() {
                 <input required type="text" name="last_name" placeholder="Last Name *" value={editFormData.last_name || ''} onChange={handleEditChange} style={styles.input} />
                 <input required type="email" name="email" placeholder="Email Address *" value={editFormData.email || ''} onChange={handleEditChange} style={styles.input} />
                 <input required type="tel" name="phone_number" placeholder="Phone Number *" value={editFormData.phone_number || ''} onChange={handleEditChange} style={styles.input} />
-                <input type="date" name="dob" title="Date of Birth" value={editFormData.dob || ''} onChange={handleEditChange} style={styles.input} />
-                <input type="text" name="visa_status" placeholder="Visa Status (e.g. H1B)" value={editFormData.visa_status || ''} onChange={handleEditChange} style={styles.input} />
-                <input type="text" name="address" placeholder="Full Address" value={editFormData.address || ''} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleEditChange} />
+                <input type="date" name="dob" title="Date of Birth" value={formData.dob} onChange={handleChange} style={styles.input} />
+                <select name="visa_status" value={formData.visa_status} onChange={handleChange} style={styles.input}>
+                  <option value="">-- Select Visa Status --</option>
+                  <option value="US Citizen">US Citizen</option>
+                  <option value="Green Card">Green Card (GC)</option>
+                  <option value="H1B">H1B</option>
+                  <option value="OPT">OPT</option>
+                  <option value="CPT">CPT</option>
+                  <option value="H4 EAD">H4 EAD</option>
+                  <option value="Other">Other</option>
+                </select>
+                <input type="text" name="address" placeholder="Full Address" value={formData.address} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
               </div>
 
               <h3 style={styles.sectionHeader}>2. Work & Financial Details</h3>
@@ -387,11 +424,6 @@ export default function Contractors() {
                   </div>
               )}
 
-{editFormData.contract_type === 'C2C' && (
-                  <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #4F46E5' }}>
-                      {/* ... C2C stuff ... */}
-                  </div>
-              )}
 
               {/* --- EDIT FORM: W2 COMPLIANCE INTERACTIVE --- */}
               {editFormData.contract_type === 'W2' && (
@@ -414,7 +446,7 @@ export default function Contractors() {
                   </div>
               )}
 
-              <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
+             
 
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
@@ -432,8 +464,12 @@ export default function Contractors() {
                 <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <label style={{ fontSize: '13px', color: '#6B7280', whiteSpace: 'nowrap' }}>Project Start:</label>
                     <input type="date" name="project_start_date" value={editFormData.project_start_date || ''} onChange={handleEditChange} style={{...styles.input, flex: 1}} />
+                    
+                    <label style={{ fontSize: '13px', color: '#6B7280', whiteSpace: 'nowrap', marginLeft: '10px' }}>Project End:</label>
+                    <input type="date" name="project_end_date" value={editFormData.project_end_date || ''} onChange={handleEditChange} style={{...styles.input, flex: 1}} />
                 </div>
                 <input type="text" name="vendor_address" value={editFormData.vendor_address || ''} placeholder="Vendor Address" style={{...styles.input, gridColumn: 'span 2'}} onChange={handleEditChange} />
+                
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
@@ -525,6 +561,7 @@ export default function Contractors() {
                 <DetailItem label="Vendor For (End Client)" value={viewingUser.vendor_for} />
                 <DetailItem label="Net Terms" value={viewingUser.net_terms} />
                 <DetailItem label="Project Start Date" value={viewingUser.project_start_date} />
+                <DetailItem label="Project End Date" value={viewingUser.project_end_date} />
                 <div style={{ gridColumn: 'span 2' }}>
                   <DetailItem label="Vendor Address" value={viewingUser.vendor_address} />
                 </div>
@@ -555,7 +592,16 @@ export default function Contractors() {
                 <input required type="email" name="email" placeholder="Email Address *" value={formData.email} onChange={handleChange} style={styles.input} />
                 <input required type="tel" name="phone_number" placeholder="Phone Number *" value={formData.phone_number} onChange={handleChange} style={styles.input} />
                 <input type="date" name="dob" title="Date of Birth" value={formData.dob} onChange={handleChange} style={styles.input} />
-                <input type="text" name="visa_status" placeholder="Visa Status (e.g. H1B)" value={formData.visa_status} onChange={handleChange} style={styles.input} />
+                <select name="visa_status" value={formData.visa_status} onChange={handleChange} style={styles.input}>
+                  <option value="">-- Select Visa Status --</option>
+                  <option value="US Citizen">US Citizen</option>
+                  <option value="Green Card">Green Card (GC)</option>
+                  <option value="H1B">H1B</option>
+                  <option value="OPT">OPT</option>
+                  <option value="CPT">CPT</option>
+                  <option value="H4 EAD">H4 EAD</option>
+                  <option value="Other">Other</option>
+                </select>
                 <input type="text" name="address" placeholder="Full Address" value={formData.address} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
               </div>
 
@@ -623,14 +669,18 @@ export default function Contractors() {
                     </option>
                   ))}
                 </select>
-                <input type="email" name="vendor_email" value={formData.vendor_email} placeholder="Vendor Email" onChange={handleChange} style={styles.input} />
+                <input type="email" name="vendor_email" value={formData.vendor_email} placeholder="Vendor Email (Auto)" readOnly style={{...styles.input, backgroundColor: '#F3F4F6', cursor: 'not-allowed'}} />
                 <input type="text" name="vendor_for" value={formData.vendor_for} placeholder="Vendor For (e.g. End Client Name)" onChange={handleChange} style={styles.input} />
-                <input type="text" name="net_terms" value={formData.net_terms} placeholder="Net Terms (e.g. Net 30)" onChange={handleChange} style={styles.input} />
+                <input type="text" name="net_terms" value={formData.net_terms} placeholder="Net Terms (Auto)" readOnly style={{...styles.input, backgroundColor: '#F3F4F6', cursor: 'not-allowed'}} />
+                
                 <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <label style={{ fontSize: '13px', color: '#6B7280', whiteSpace: 'nowrap' }}>Project Start:</label>
                     <input type="date" name="project_start_date" value={formData.project_start_date} onChange={handleChange} style={{...styles.input, flex: 1}} />
+                    
+                    <label style={{ fontSize: '13px', color: '#6B7280', whiteSpace: 'nowrap', marginLeft: '10px' }}>Project End:</label>
+                    <input type="date" name="project_end_date" value={formData.project_end_date} onChange={handleChange} style={{...styles.input, flex: 1}} />
                 </div>
-                <input type="text" name="vendor_address" value={formData.vendor_address} placeholder="Vendor Address" style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
+                <input type="text" name="vendor_address" value={formData.vendor_address} placeholder="Vendor Address (Auto)" readOnly style={{...styles.input, gridColumn: 'span 2', backgroundColor: '#F3F4F6', cursor: 'not-allowed'}} />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '30px' }}>
