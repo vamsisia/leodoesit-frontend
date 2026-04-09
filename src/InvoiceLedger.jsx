@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 export default function InvoiceLedger() {
   const [invoices, setInvoices] = useState([]);
@@ -9,7 +7,7 @@ export default function InvoiceLedger() {
   // --- UI STATE ---
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 🔥 NEW FILTER STATE
+  // --- FILTER STATE ---
   const [filterMonth, setFilterMonth] = useState('ALL');
   const [filterYear, setFilterYear] = useState('ALL');
 
@@ -37,14 +35,14 @@ export default function InvoiceLedger() {
     setSelectedInvoices([]); 
   }, [searchTerm, activeTab]);
 
-  // --- 🔥 SECURITY HANDSHAKE APPLIED HERE ---
+  // --- SECURITY HANDSHAKE ---
   const fetchInvoices = async () => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
       const response = await fetch('http://localhost:5000/api/invoices', {
         headers: {
           'Content-Type': 'application/json',
-          'x-tenant-id': admin?.tenant_id // Handshake applied!
+          'x-tenant-id': admin?.tenant_id 
         }
       });
       const data = await response.json();
@@ -53,20 +51,20 @@ export default function InvoiceLedger() {
     finally { setLoading(false); }
   };
 
-  // --- 🔥 SECURITY HANDSHAKE APPLIED HERE TOO ---
+  // --- SECURITY HANDSHAKE ---
   const runApiAction = async (url, method) => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     const response = await fetch(url, { 
       method,
       headers: {
         'Content-Type': 'application/json',
-        'x-tenant-id': admin?.tenant_id // Handshake applied!
+        'x-tenant-id': admin?.tenant_id 
       }
     });
     return await response.json();
   };
 
-  // --- NEW SMART ACTION HANDLER ---
+  // --- SMART ACTION HANDLER ---
   const handleActionClick = (action, targetId, isBulk = false) => {
     if (action !== 'VOID' && muteConfirmations) {
       executeBackgroundAction(action, isBulk ? selectedInvoices : [targetId]);
@@ -123,28 +121,26 @@ export default function InvoiceLedger() {
     }
   };
 
-  // --- PDF GENERATOR ---
+  // --- 🔥 NEW PDF GENERATOR (TALKS TO BACKEND) ---
   const downloadPDF = (e, invoice) => {
-    e.stopPropagation(); 
-    const doc = new jsPDF();
-    doc.setFontSize(22); doc.setTextColor(16, 185, 129); doc.text("Leodoes It", 14, 20);
-    doc.setFontSize(10); doc.setTextColor(100); doc.text("Visakhapatnam, Andhra Pradesh", 14, 28);
-    doc.setFontSize(16); doc.setTextColor(17, 24, 39); doc.text("INVOICE", 150, 20);
-    doc.setFontSize(10);
+    e.stopPropagation(); // Keeps the drawer from opening when clicking the button
+    
+    // The exact URL we just created in your backend
+    const downloadUrl = `http://localhost:5000/api/invoices/${invoice.id}/download`;
+    
+    // Create an invisible link and click it to trigger the browser's download prompt
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    
+    // Naming the file dynamically
     const invNumber = invoice.invoice_number || `INV-${invoice.id.substring(0,6).toUpperCase()}`;
-    doc.text(`Invoice #: ${invNumber}`, 150, 28);
-    doc.text(`Date: ${new Date(invoice.created_at || Date.now()).toLocaleDateString()}`, 150, 34);
-    doc.setFontSize(12); doc.setTextColor(0); doc.text("Billed To:", 14, 45);
-    doc.setFontSize(14); doc.text(invoice.client_name || 'Unknown Client', 14, 52);
-    autoTable(doc, {
-      startY: 65,
-      head: [['Description', 'Contractor', 'Amount']],
-      body: [['Professional Services', `${invoice.first_name} ${invoice.last_name}`, `$${parseFloat(invoice.amount_invoiced).toFixed(2)}`]],
-      headStyles: { fillColor: [17, 24, 39] },
-    });
-    const finalY = doc.lastAutoTable.finalY || 65;
-    doc.setFontSize(14); doc.text(`Total Due: $${parseFloat(invoice.amount_invoiced).toFixed(2)}`, 140, finalY + 15);
-    doc.save(`${invNumber}_Invoice.pdf`);
+    link.setAttribute('download', `${invNumber}_Invoice.pdf`);
+    
+    document.body.appendChild(link);
+    link.click();
+    
+    // Clean up the invisible link
+    document.body.removeChild(link);
   };
 
   // --- LOGIC ENGINE ---

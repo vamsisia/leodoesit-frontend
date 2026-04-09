@@ -4,17 +4,17 @@ import { useNavigate } from 'react-router-dom';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [portal, setPortal] = useState('leodoesit'); // Our new multi-tenant state!
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
   const navigate = useNavigate();
 
-  // Dynamic Branding: Changes colors based on the dropdown choice
-  const isGandiva = portal === 'gandiva';
-  const themeColor = isGandiva ? '#4F46E5' : '#10B981'; // Indigo for Gandiva, Green for Leodoesit
+  // The smart switch still handles the colors and logos in the background!
+  const isGandiva = email.toLowerCase().includes('gandiva');
   
-  // --- THE FIX IS HERE: Changed 'Gandiva' to 'Gandiva Insights' ---
+  // Dynamically set all variables based on the smart switch
+  const portal = isGandiva ? 'gandiva' : 'leodoesit';
+  const themeColor = isGandiva ? '#4F46E5' : '#10B981'; 
   const companyName = isGandiva ? 'Gandiva Insights' : 'Leodoes It';
 
   const handleLogin = async (e) => {
@@ -26,14 +26,12 @@ export default function Login() {
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Notice we are now sending the 'portal' choice to your backend!
         body: JSON.stringify({ email, password, portal }) 
       });
 
       const data = await response.json();
 
       if (data.success) {
-        // Save the user data (which now includes their specific tenant_id)
         localStorage.setItem('leodoesit_user', JSON.stringify(data.data));
 
         if (data.data.role === 'ADMIN') {
@@ -55,7 +53,6 @@ export default function Login() {
     <div style={styles.container}>
       <div style={styles.leftPanel}>
         <div style={styles.branding}>
-          {/* The logo text and color changes automatically */}
           <h1 style={{...styles.logo, color: themeColor}}>{companyName}</h1>
           <p style={styles.tagline}>Enterprise Billing & Timesheet Engine</p>
         </div>
@@ -67,34 +64,20 @@ export default function Login() {
       <div style={styles.rightPanel}>
         <div style={styles.loginBox}>
           <h2 style={styles.title}>Welcome Back</h2>
-          <p style={styles.subtitle}>Please sign in to access your portal.</p>
+          <p style={styles.subtitle}>Enter your work email to access your portal.</p>
 
           {error && <div style={styles.errorBox}>❌ {error}</div>}
 
           <form onSubmit={handleLogin} style={styles.form}>
             
-            {/* THE NEW MULTI-TENANT DROPDOWN */}
             <div style={styles.inputGroup}>
-              <label style={styles.label}>Select Workspace</label>
-              <select 
-                value={portal} 
-                onChange={(e) => setPortal(e.target.value)}
-                style={{...styles.input, appearance: 'auto', cursor: 'pointer', border: `1px solid ${themeColor}66`}}
-                disabled={isLoading}
-              >
-                <option value="leodoesit">Leodoesit Portal</option>
-                <option value="gandiva">Gandiva Insights Portal</option>
-              </select>
-            </div>
-
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Email Address</label>
+              <label style={styles.label}>Work Email Address</label>
               <input 
                 type="email" 
-                placeholder={`admin@${portal === 'gandiva' ? 'gandiva' : 'leodoesit'}.com`}
+                placeholder="name@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={styles.input}
+                style={{...styles.input, border: email ? `1px solid ${themeColor}66` : '1px solid #D1D5DB'}}
                 required 
                 disabled={isLoading}
               />
@@ -113,9 +96,9 @@ export default function Login() {
               />
             </div>
 
-            {/* The button color changes automatically */}
+            {/* 🔥 UPDATED: The button now just says "Sign In" */}
             <button type="submit" style={{...styles.button, backgroundColor: themeColor}} disabled={isLoading || !email || !password}>
-              {isLoading ? 'Authenticating...' : `Sign In to ${companyName} ➔`}
+              {isLoading ? 'Authenticating...' : 'Sign In ➔'}
             </button>
           </form>
         </div>
@@ -126,12 +109,12 @@ export default function Login() {
 
 const styles = {
   container: { display: 'flex', height: '100vh', width: '100vw', fontFamily: 'system-ui, sans-serif' },
-  leftPanel: { flex: 1, backgroundColor: '#0F172A', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px', position: 'relative', overflow: 'hidden' },
+  leftPanel: { flex: 1, backgroundColor: '#0F172A', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px', position: 'relative', overflow: 'hidden', transition: 'all 0.4s ease' },
   rightPanel: { flex: 1, backgroundColor: '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   branding: { zIndex: 10 },
-  logo: { fontSize: '48px', margin: '0 0 10px 0', letterSpacing: '-1px', transition: 'color 0.3s ease' },
+  logo: { fontSize: '48px', margin: '0 0 10px 0', letterSpacing: '-1px', transition: 'color 0.4s ease' },
   tagline: { fontSize: '20px', color: '#94A3B8', margin: 0, fontWeight: '300' },
-  circle1: { position: 'absolute', bottom: '-10%', left: '-10%', width: '400px', height: '400px', borderRadius: '50%', transition: 'background 0.3s ease' },
+  circle1: { position: 'absolute', bottom: '-10%', left: '-10%', width: '400px', height: '400px', borderRadius: '50%', transition: 'background 0.4s ease' },
   loginBox: { backgroundColor: 'white', padding: '50px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', width: '100%', maxWidth: '420px' },
   title: { fontSize: '28px', margin: '0 0 8px 0', color: '#111827' },
   subtitle: { color: '#6B7280', margin: '0 0 30px 0', fontSize: '15px' },
@@ -139,6 +122,6 @@ const styles = {
   form: { display: 'flex', flexDirection: 'column', gap: '20px' },
   inputGroup: { display: 'flex', flexDirection: 'column', gap: '6px' },
   label: { fontSize: '13px', fontWeight: '600', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' },
-  input: { padding: '12px 16px', borderRadius: '8px', border: '1px solid #D1D5DB', fontSize: '15px', backgroundColor: '#F9FAFB', outline: 'none' },
-  button: { color: 'white', border: 'none', padding: '14px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', transition: 'background 0.3s ease' }
+  input: { padding: '12px 16px', borderRadius: '8px', fontSize: '15px', backgroundColor: '#F9FAFB', outline: 'none', transition: 'border 0.3s ease' },
+  button: { color: 'white', border: 'none', padding: '14px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', transition: 'background 0.4s ease' }
 };
