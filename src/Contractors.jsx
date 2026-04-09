@@ -98,8 +98,23 @@ export default function Contractors() {
   };
 
   // --- Handlers for Add Form ---
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+
+  // 🌟 PHONE NUMBER FORMATTER: Converts 1234567890 to (123) 456-7890
+  const formatPhoneNumber = (value) => {
+    if (!value) return value;
+    const phoneNumber = value.replace(/[^\d]/g, ''); // Strip all non-numbers
+    if (phoneNumber.length < 4) return phoneNumber;
+    if (phoneNumber.length < 7) return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
+    return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6, 10)}`;
+  };
+
+const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'phone_number' || name === 'c2c_phone') {
+      setFormData({ ...formData, [name]: formatPhoneNumber(value) });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleClientSelect = (e) => {
@@ -151,8 +166,14 @@ export default function Contractors() {
   };
 
   const handleEditChange = (e) => {
-    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-    setEditFormData({ ...editFormData, [e.target.name]: value });
+    const { name, type, checked, value } = e.target;
+    const finalValue = type === 'checkbox' ? checked : value;
+    
+    if (name === 'phone_number' || name === 'c2c_phone') {
+      setEditFormData({ ...editFormData, [name]: formatPhoneNumber(finalValue) });
+    } else {
+      setEditFormData({ ...editFormData, [name]: finalValue });
+    }
   };
 
   const handleEditClientSelect = (e) => {
@@ -226,21 +247,35 @@ export default function Contractors() {
     });
   };
 
-  let processedContractors = contractors.filter(user => {
-    if (user.role === 'ADMIN') {
-      return false; 
-    }
-    
-    // 1. Check Search Term
-    const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
-    const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+ // 🌟 THE FIX: Auto-Sync fresh client data into the employee list dynamically!
+ let syncedContractors = contractors.map(user => {
+  // Look up the live client in the clients array
+  const linkedClient = clients.find(c => (c.company_name || c.name) === user.vendor_name);
+  
+  // If we find a match, overwrite the employee's old data with the fresh client data
+  if (linkedClient) {
+    return {
+      ...user,
+      vendor_email: linkedClient.billing_email || '',
+      net_terms: linkedClient.net_terms || 'Net 30',
+      vendor_address: linkedClient.vendor_address || ''
+    };
+  }
+  return user; // If no client is linked, just return the user as normal
+});
 
-    // 2. Check Visa Filter (If 'All' is selected, everyone passes. Otherwise, it must match exactly)
-    const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
+// Now apply your filters to the freshly 'synced' list!
+let processedContractors = syncedContractors.filter(user => {
+  if (user.email === 'admin@leodoesit.com') {
+    return false; 
+  }
+  
+  const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
+  const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+  const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
 
-    // Must pass both tests to show up on the screen!
-    return matchesSearch && matchesVisa;
-  });
+  return matchesSearch && matchesVisa;
+});
 
   processedContractors.sort((a, b) => {
     let valA = a[sortConfig.key] || '';
@@ -408,7 +443,7 @@ export default function Contractors() {
                 <input required type="text" name="first_name" placeholder="First Name *" value={editFormData.first_name || ''} onChange={handleEditChange} style={styles.input} />
                 <input required type="text" name="last_name" placeholder="Last Name *" value={editFormData.last_name || ''} onChange={handleEditChange} style={styles.input} />
                 <input required type="email" name="email" placeholder="Email Address *" value={editFormData.email || ''} onChange={handleEditChange} style={styles.input} />
-                <input required type="tel" name="phone_number" placeholder="Phone Number *" value={editFormData.phone_number || ''} onChange={handleEditChange} style={styles.input} />
+                <input required type="tel" name="phone_number" placeholder="Phone Number *" value={editFormData.phone_number || ''} onChange={handleEditChange} style={styles.input} maxLength="14" pattern="\(\d{3}\) \d{3}-\d{4}" title="Must be a valid US phone number: (XXX) XXX-XXXX" />
                 <input type="date" name="dob" title="Date of Birth" value={formData.dob} onChange={handleChange} style={styles.input} />
                 <select name="visa_status" value={formData.visa_status} onChange={handleChange} style={styles.input}>
                   <option value="">-- Select Visa Status --</option>
@@ -451,7 +486,7 @@ export default function Contractors() {
                       <div style={styles.formGrid}>
                           <input required type="text" name="c2c_name" placeholder="C2C Company Name *" value={editFormData.c2c_name || ''} onChange={handleEditChange} style={styles.input} />
                           <input required type="email" name="c2c_email" placeholder="C2C Email *" value={editFormData.c2c_email || ''} onChange={handleEditChange} style={styles.input} />
-                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" value={editFormData.c2c_phone || ''} onChange={handleEditChange} style={styles.input} />
+                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" value={editFormData.c2c_phone || ''} onChange={handleEditChange} style={styles.input} maxLength="14" pattern="\(\d{3}\) \d{3}-\d{4}" title="Must be a valid US phone number: (XXX) XXX-XXXX" />
                       </div>
                   </div>
               )}
@@ -622,7 +657,7 @@ export default function Contractors() {
                 <input required type="text" name="first_name" placeholder="First Name *" value={formData.first_name} onChange={handleChange} style={styles.input} />
                 <input required type="text" name="last_name" placeholder="Last Name *" value={formData.last_name} onChange={handleChange} style={styles.input} />
                 <input required type="email" name="email" placeholder="Email Address *" value={formData.email} onChange={handleChange} style={styles.input} />
-                <input required type="tel" name="phone_number" placeholder="Phone Number *" value={formData.phone_number} onChange={handleChange} style={styles.input} />
+                <input required type="tel" name="phone_number" placeholder="Phone Number *" value={formData.phone_number} onChange={handleChange} style={styles.input} maxLength="14" pattern="\(\d{3}\) \d{3}-\d{4}" title="Must be a valid US phone number: (XXX) XXX-XXXX" />
                 <input type="date" name="dob" title="Date of Birth" value={formData.dob} onChange={handleChange} style={styles.input} />
                 <select name="visa_status" value={formData.visa_status} onChange={handleChange} style={styles.input}>
                   <option value="">-- Select Visa Status --</option>
@@ -665,7 +700,7 @@ export default function Contractors() {
                       <div style={styles.formGrid}>
                           <input required type="text" name="c2c_name" placeholder="C2C Company Name *" value={formData.c2c_name} onChange={handleChange} style={styles.input} />
                           <input required type="email" name="c2c_email" placeholder="C2C Email *" value={formData.c2c_email} onChange={handleChange} style={styles.input} />
-                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" value={formData.c2c_phone} onChange={handleChange} style={styles.input} />
+                          <input required type="tel" name="c2c_phone" placeholder="C2C Phone Number *" value={formData.c2c_phone} onChange={handleChange} style={styles.input} maxLength="14" pattern="\(\d{3}\) \d{3}-\d{4}" title="Must be a valid US phone number: (XXX) XXX-XXXX" />
                       </div>
                   </div>
               )}
