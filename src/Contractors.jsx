@@ -7,10 +7,13 @@ export default function Contractors() {
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [visaFilter, setVisaFilter] = useState('All'); // <-- NEW VISA FILTER STATE
+  const [visaFilter, setVisaFilter] = useState('All'); 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   const [sortConfig, setSortConfig] = useState({ key: 'first_name', direction: 'asc' });
+
+  // Toggle to view the safely archived employees
+  const [showArchive, setShowArchive] = useState(false);
 
   // Modals State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -40,7 +43,7 @@ export default function Contractors() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, showArchive]);
 
   const fetchContractors = async () => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
@@ -86,7 +89,90 @@ export default function Contractors() {
     }
   };
 
-  // --- MEMORY WIPE FUNCTIONS ---
+  // --- 🔥 SAFE ARCHIVE (Soft Delete) ---
+  const handleArchiveContractor = async (id, name) => {
+    const confirmArchive = window.confirm(`Move ${name} to the Archive?\n\nThey will be hidden from the main roster, but their data is safely stored.`);
+    if (!confirmArchive) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setContractors(contractors.map(c => c.id === id ? { ...c, is_deleted: true } : c));
+      } else {
+        alert("❌ Failed to archive: " + data.error);
+      }
+    } catch (error) {
+      alert("❌ Network error. Is the backend running?");
+    }
+  };
+
+  // --- 🔥 RESTORE FROM ARCHIVE ---
+  const handleRestoreContractor = async (id, name) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/users/${id}/restore`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setContractors(contractors.map(c => c.id === id ? { ...c, is_deleted: false } : c));
+        alert(`✅ ${name} has been restored successfully!`);
+      }
+    } catch (error) {
+      alert("❌ Network error restoring employee.");
+    }
+  };
+
+  // --- 🔥 PERMANENT CRITICAL DELETE ---
+  const handlePermanentDelete = async (id, name) => {
+    const confirmText = window.prompt(`CRITICAL WARNING: You are about to permanently destroy the record for ${name}.\n\nThis cannot be undone. Type "DELETE" to confirm.`);
+    
+    if (confirmText !== "DELETE") {
+        return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/users/${id}/permanent`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setContractors(contractors.filter(c => c.id !== id));
+        alert(`🚨 ${name} has been permanently deleted.`);
+      } else {
+        alert("❌ Failed: " + data.error);
+      }
+    } catch (error) {
+      alert("❌ Network error performing permanent delete.");
+    }
+  };
+
+  const handleOpenAddModal = () => {
+    let maxNum = 0;
+    contractors.forEach(c => {
+      const num = parseInt(c.invoice_num, 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    });
+    
+    const nextSequenceNum = String(maxNum + 1).padStart(2, '0');
+
+    setFormData({
+      ...initialFormState,
+      invoice_num: nextSequenceNum
+    });
+    setIsAddModalOpen(true);
+  };
+
   const handleCloseAddModal = () => {
     setIsAddModalOpen(false);
     setFormData(initialFormState); 
@@ -97,18 +183,15 @@ export default function Contractors() {
     setEditFormData({}); 
   };
 
-  // --- Handlers for Add Form ---
-
-  // 🌟 PHONE NUMBER FORMATTER: Converts 1234567890 to (123) 456-7890
   const formatPhoneNumber = (value) => {
     if (!value) return value;
-    const phoneNumber = value.replace(/[^\d]/g, ''); // Strip all non-numbers
+    const phoneNumber = value.replace(/[^\d]/g, ''); 
     if (phoneNumber.length < 4) return phoneNumber;
     if (phoneNumber.length < 7) return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
     return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6, 10)}`;
   };
 
-const handleChange = (e) => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === 'phone_number' || name === 'c2c_phone') {
       setFormData({ ...formData, [name]: formatPhoneNumber(value) });
@@ -148,7 +231,7 @@ const handleChange = (e) => {
       
       if (data.success) {
         fetchContractors();
-        handleCloseAddModal(); // Safely close and clear
+        handleCloseAddModal(); 
       } else {
         alert("❌ Failed: " + data.error);
       }
@@ -159,7 +242,6 @@ const handleChange = (e) => {
     }
   };
 
-  // --- Handlers for Edit Form ---
   const handleEditClick = (user) => {
     setEditingId(user.id);
     setEditFormData({ ...user, is_active: user.is_active !== false }); 
@@ -203,7 +285,7 @@ const handleChange = (e) => {
       const data = await response.json();
       if (data.success) {
         setContractors(contractors.map(c => c.id === editingId ? { ...c, ...data.data } : c));
-        handleCloseEditModal(); // Safely close and clear
+        handleCloseEditModal(); 
       }
     } catch (error) { alert("❌ Failed to update contractor."); } finally { setIsSubmitting(false); }
   };
@@ -247,35 +329,34 @@ const handleChange = (e) => {
     });
   };
 
- // 🌟 THE FIX: Auto-Sync fresh client data into the employee list dynamically!
- let syncedContractors = contractors.map(user => {
-  // Look up the live client in the clients array
-  const linkedClient = clients.find(c => (c.company_name || c.name) === user.vendor_name);
-  
-  // If we find a match, overwrite the employee's old data with the fresh client data
-  if (linkedClient) {
-    return {
-      ...user,
-      vendor_email: linkedClient.billing_email || '',
-      net_terms: linkedClient.net_terms || 'Net 30',
-      vendor_address: linkedClient.vendor_address || ''
-    };
-  }
-  return user; // If no client is linked, just return the user as normal
-});
+  let syncedContractors = contractors.map(user => {
+    const linkedClient = clients.find(c => (c.company_name || c.name) === user.vendor_name);
+    if (linkedClient) {
+      return {
+        ...user,
+        vendor_email: linkedClient.billing_email || '',
+        net_terms: linkedClient.net_terms || 'Net 30',
+        vendor_address: linkedClient.vendor_address || ''
+      };
+    }
+    return user; 
+  });
 
-// Now apply your filters to the freshly 'synced' list!
-let processedContractors = syncedContractors.filter(user => {
-  if (user.email === 'admin@leodoesit.com') {
-    return false; 
-  }
-  
-  const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
-  const matchesSearch = searchString.includes(searchTerm.toLowerCase());
-  const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
+  let processedContractors = syncedContractors.filter(user => {
+    if (user.role === 'ADMIN' || user.email === 'admin@leodoesit.com' || user.email === 'admin@gandiva.com' || user.email === 'admin@gandivainsights.com') {
+      return false; 
+    }
+    
+    const isArchived = user.is_deleted === true;
+    if (showArchive && !isArchived) return false; 
+    if (!showArchive && isArchived) return false; 
 
-  return matchesSearch && matchesVisa;
-});
+    const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
+    const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+    const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
+
+    return matchesSearch && matchesVisa;
+  });
 
   processedContractors.sort((a, b) => {
     let valA = a[sortConfig.key] || '';
@@ -309,28 +390,40 @@ let processedContractors = syncedContractors.filter(user => {
       <div style={styles.header}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={styles.title}>Team Roster</h1>
-            <p style={styles.subtitle}>Manage your workforce, set billing rates, and view insights.</p>
+            <h1 style={styles.title}>{showArchive ? '📦 Archived Records' : 'Team Roster'}</h1>
+            <p style={styles.subtitle}>
+              {showArchive ? 'View and restore archived employees.' : 'Manage your workforce, set billing rates, and view insights.'}
+            </p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={exportToCSV} style={styles.exportBtn}>⬇️ Export CSV</button>
             
-            {/* --- NEW VISA DROPDOWN --- */}
-            <select 
-              value={visaFilter} 
-              onChange={(e) => setVisaFilter(e.target.value)}
-              style={styles.searchInput}
+            <button 
+              onClick={() => setShowArchive(!showArchive)} 
+              style={{...styles.exportBtn, backgroundColor: showArchive ? '#10B981' : '#6B7280', minWidth: '140px'}}
             >
-              <option value="All">All Visas</option>
-              <option value="US Citizen">US Citizen</option>
-              <option value="Green Card">Green Card (GC)</option>
-              <option value="H1B">H1B</option>
-              <option value="OPT">OPT</option>
-              <option value="CPT">CPT</option>
-              <option value="H4 EAD">H4 EAD</option>
-              <option value="Other">Other</option>
-            </select>
-            {/* ------------------------- */}
+              {showArchive ? '👥 Back to Roster' : '📦 View Archive'}
+            </button>
+
+            {!showArchive && (
+              <>
+                <button onClick={exportToCSV} style={styles.exportBtn}>⬇️ Export CSV</button>
+                
+                <select 
+                  value={visaFilter} 
+                  onChange={(e) => setVisaFilter(e.target.value)}
+                  style={styles.searchInput}
+                >
+                  <option value="All">All Visas</option>
+                  <option value="US Citizen">US Citizen</option>
+                  <option value="Green Card">Green Card (GC)</option>
+                  <option value="H1B">H1B</option>
+                  <option value="OPT">OPT</option>
+                  <option value="CPT">CPT</option>
+                  <option value="H4 EAD">H4 EAD</option>
+                  <option value="Other">Other</option>
+                </select>
+              </>
+            )}
 
             <input 
               type="text" 
@@ -339,7 +432,10 @@ let processedContractors = syncedContractors.filter(user => {
               onChange={(e) => setSearchTerm(e.target.value)}
               style={styles.searchInput}
             />
-            <button onClick={() => setIsAddModalOpen(true)} style={styles.addPrimaryBtn}>+ Add Employee</button>
+            
+            {!showArchive && (
+              <button onClick={handleOpenAddModal} style={styles.addPrimaryBtn}>+ Add Employee</button>
+            )}
           </div>
          
         </div>
@@ -349,7 +445,9 @@ let processedContractors = syncedContractors.filter(user => {
         {loading ? (
           <p style={{ padding: '20px' }}>Loading team...</p>
         ) : processedContractors.length === 0 ? (
-          <p style={{ padding: '20px', color: '#6B7280' }}>No contractors found.</p>
+          <p style={{ padding: '20px', color: '#6B7280', fontStyle: 'italic' }}>
+            {showArchive ? 'Your archive is currently empty.' : 'No active contractors found.'}
+          </p>
         ) : (
           <>
             <table style={styles.table}>
@@ -364,12 +462,12 @@ let processedContractors = syncedContractors.filter(user => {
               </thead>
               <tbody>
                 {currentItems.map((user) => (
-                  <tr key={user.id} style={styles.tableRow}>
+                  <tr key={user.id} style={{...styles.tableRow, backgroundColor: showArchive ? '#F3F4F6' : 'white'}}>
                     <td style={styles.td}>
                       <strong 
-                        onClick={() => setViewingUser(user)} 
-                        style={{ cursor: 'pointer', color: '#4F46E5' }}
-                        title="Click to view full details"
+                        onClick={() => !showArchive && setViewingUser(user)} 
+                        style={{ cursor: showArchive ? 'default' : 'pointer', color: showArchive ? '#6B7280' : '#4F46E5' }}
+                        title={showArchive ? "" : "Click to view full details"}
                       >
                         {user.first_name} {user.last_name}
                       </strong>
@@ -390,7 +488,7 @@ let processedContractors = syncedContractors.filter(user => {
                         <span style={user.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
                           {user.contract_type || 'W2'} - {user.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
-                        {(user.contract_type === 'W2' || !user.contract_type) && (
+                        {(user.contract_type === 'W2' || !user.contract_type) && !showArchive && (
                           (() => {
                             const completed = [user.i9_completed, user.w4_completed, user.everify_completed, user.bank_details_completed].filter(Boolean).length;
                             return (
@@ -403,8 +501,25 @@ let processedContractors = syncedContractors.filter(user => {
                       </div>
                     </td>
                     <td style={styles.td}>
-                      <button onClick={() => openInsights(user)} style={styles.insightBtn}>📊 Stats</button>
-                      <button onClick={() => handleEditClick(user)} style={styles.editBtn}>Edit</button>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        {showArchive ? (
+                          <>
+                            <button onClick={() => handleRestoreContractor(user.id, user.first_name)} style={styles.saveBtn}>
+                              ♻️ Restore
+                            </button>
+                            <button onClick={() => handlePermanentDelete(user.id, user.first_name)} style={styles.criticalBtn} title="Destroy Permanently">
+                              🧨 Delete
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => openInsights(user)} style={styles.insightBtn}>📊 Stats</button>
+                            <button onClick={() => handleEditClick(user)} style={styles.editBtn}>Edit</button>
+                            <button onClick={() => handleArchiveContractor(user.id, user.first_name)} style={styles.archiveBtn} title="Safely Archive">📦</button>
+                            <button onClick={() => handlePermanentDelete(user.id, user.first_name)} style={styles.deleteBtn} title="Permanent Delete">🗑️</button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -491,7 +606,6 @@ let processedContractors = syncedContractors.filter(user => {
                   </div>
               )}
 
-
               {/* --- EDIT FORM: W2 COMPLIANCE INTERACTIVE --- */}
               {editFormData.contract_type === 'W2' && (
                   <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #10B981' }}>
@@ -512,8 +626,6 @@ let processedContractors = syncedContractors.filter(user => {
                       </div>
                   </div>
               )}
-
-             
 
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
@@ -676,6 +788,7 @@ let processedContractors = syncedContractors.filter(user => {
               <div style={styles.formGrid}>
                 <input type="text" name="role" placeholder="Role (e.g. Software Engineer)" value={formData.role} onChange={handleChange} style={styles.input} />
                 <input type="date" name="start_date" title="Start Date" value={formData.start_date} onChange={handleChange} style={styles.input} />
+                
                 <input type="text" name="invoice_num" placeholder="Initial Invoice Number" value={formData.invoice_num} onChange={handleChange} style={styles.input} />
                 
                 <select name="contract_type" value={formData.contract_type} onChange={handleChange} style={styles.input}>
@@ -808,21 +921,25 @@ const styles = {
   tableHead: { backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' },
   th: { padding: '15px 20px', color: '#374151', fontWeight: '600', fontSize: '14px' },
   thSortable: { padding: '15px 20px', color: '#374151', fontWeight: '600', fontSize: '14px', cursor: 'pointer', userSelect: 'none' },
-  tableRow: { borderBottom: '1px solid #E5E7EB' },
+  tableRow: { borderBottom: '1px solid #E5E7EB', transition: 'background-color 0.2s' },
   td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
   rateBadge: { backgroundColor: '#D1FAE5', color: '#047857', padding: '4px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' },
   badgeActive: { backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
   badgeInactive: { backgroundColor: '#F3F4F6', color: '#6B7280', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
-  editInput: { padding: '6px', borderRadius: '4px', border: '1px solid #10B981', width: '90px' },
-  insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
-  editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  
+  insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
+  
+  archiveBtn: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
+  deleteBtn: { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
+  criticalBtn: { backgroundColor: '#7F1D1D', color: 'white', border: '1px solid #450A0A', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
+  
   saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
   cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   pagination: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', borderTop: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' },
   pageBtn: { padding: '8px 16px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
   pageInfo: { color: '#6B7280', fontSize: '14px' },
   
-  // Modals & Forms
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
   largeModalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '700px', maxWidth: '90vw', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
