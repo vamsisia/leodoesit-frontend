@@ -1,0 +1,22 @@
+/* 1. Kill all default browser/Vite margins and padding */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* 2. Lock the window strictly to the screen size */
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden !important; /* The !important tag forces the scrollbar to die */
+    background-color: #F3F4F6; /* Fallback background color */
+  }
+  
+  /* 3. Make the React root fit perfectly inside the locked body */
+  #root {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    overflow: hidden; 
+  }

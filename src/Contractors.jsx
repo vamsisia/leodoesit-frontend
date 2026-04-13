@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function Contractors() {
   const [contractors, setContractors] = useState([]);
@@ -6,13 +6,18 @@ export default function Contractors() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // --- Expanded Filter States ---
   const [searchTerm, setSearchTerm] = useState('');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [contractFilter, setContractFilter] = useState('All');
   const [visaFilter, setVisaFilter] = useState('All'); 
+  const [jobStatusFilter, setJobStatusFilter] = useState('Open'); 
+  const [vendorFilter, setVendorFilter] = useState('');
+
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10; 
   const [sortConfig, setSortConfig] = useState({ key: 'first_name', direction: 'asc' });
 
-  // Toggle to view the safely archived employees
   const [showArchive, setShowArchive] = useState(false);
 
   // Modals State
@@ -43,7 +48,7 @@ export default function Contractors() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, showArchive]);
+  }, [searchTerm, invoiceSearch, contractFilter, visaFilter, jobStatusFilter, vendorFilter, showArchive]);
 
   const fetchContractors = async () => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
@@ -89,7 +94,19 @@ export default function Contractors() {
     }
   };
 
-  // --- 🔥 SAFE ARCHIVE (Soft Delete) ---
+  const resetFilters = () => {
+    setSearchTerm('');
+    setInvoiceSearch('');
+    setContractFilter('All');
+    setVisaFilter('All');
+    setJobStatusFilter('All');
+    setVendorFilter('');
+  };
+
+  const copyToClipboard = (text) => {
+    if(text) navigator.clipboard.writeText(text);
+  };
+
   const handleArchiveContractor = async (id, name) => {
     const confirmArchive = window.confirm(`Move ${name} to the Archive?\n\nThey will be hidden from the main roster, but their data is safely stored.`);
     if (!confirmArchive) return;
@@ -103,6 +120,7 @@ export default function Contractors() {
       
       if (data.success) {
         setContractors(contractors.map(c => c.id === id ? { ...c, is_deleted: true } : c));
+        setViewingUser(null);
       } else {
         alert("❌ Failed to archive: " + data.error);
       }
@@ -111,7 +129,6 @@ export default function Contractors() {
     }
   };
 
-  // --- 🔥 RESTORE FROM ARCHIVE ---
   const handleRestoreContractor = async (id, name) => {
     try {
       const response = await fetch(`http://localhost:5000/api/users/${id}/restore`, {
@@ -129,7 +146,6 @@ export default function Contractors() {
     }
   };
 
-  // --- 🔥 PERMANENT CRITICAL DELETE ---
   const handlePermanentDelete = async (id, name) => {
     const confirmText = window.prompt(`CRITICAL WARNING: You are about to permanently destroy the record for ${name}.\n\nThis cannot be undone. Type "DELETE" to confirm.`);
     
@@ -146,6 +162,7 @@ export default function Contractors() {
       
       if (data.success) {
         setContractors(contractors.filter(c => c.id !== id));
+        setViewingUser(null);
         alert(`🚨 ${name} has been permanently deleted.`);
       } else {
         alert("❌ Failed: " + data.error);
@@ -233,16 +250,17 @@ export default function Contractors() {
         fetchContractors();
         handleCloseAddModal(); 
       } else {
-        alert("❌ Failed: " + data.error);
+        alert("❌ Failed to add employee: " + data.error);
       }
     } catch (error) { 
-      alert("❌ Network error."); 
+      alert("❌ Network error while connecting to backend."); 
     } finally { 
       setIsSubmitting(false); 
     }
   };
 
   const handleEditClick = (user) => {
+    setViewingUser(null);
     setEditingId(user.id);
     setEditFormData({ ...user, is_active: user.is_active !== false }); 
   };
@@ -286,8 +304,14 @@ export default function Contractors() {
       if (data.success) {
         setContractors(contractors.map(c => c.id === editingId ? { ...c, ...data.data } : c));
         handleCloseEditModal(); 
+      } else {
+        alert("❌ Failed to update employee: " + data.error);
       }
-    } catch (error) { alert("❌ Failed to update contractor."); } finally { setIsSubmitting(false); }
+    } catch (error) { 
+        alert("❌ Network error while saving."); 
+    } finally { 
+        setIsSubmitting(false); 
+    }
   };
 
   const exportToCSV = () => {
@@ -316,6 +340,7 @@ export default function Contractors() {
   };
 
   const openInsights = (user) => {
+    setViewingUser(null);
     const userInvoices = invoices.filter(inv => inv.first_name === user.first_name && inv.last_name === user.last_name);
     const totalBilled = userInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
     const totalPaid = userInvoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
@@ -353,9 +378,20 @@ export default function Contractors() {
 
     const searchString = `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase();
     const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+    
+    const matchesInvoice = String(user.invoice_num || user.id).toLowerCase().includes(invoiceSearch.toLowerCase());
+    const matchesContract = contractFilter === 'All' || user.contract_type === contractFilter || (!user.contract_type && contractFilter === 'W2');
     const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
+    
+    let matchesStatus = true;
+    if (jobStatusFilter !== 'All') {
+      const isOpen = user.is_active !== false;
+      matchesStatus = (jobStatusFilter === 'Open' && isOpen) || (jobStatusFilter === 'Closed' && !isOpen);
+    }
 
-    return matchesSearch && matchesVisa;
+    const matchesVendor = !vendorFilter || (user.vendor_name && user.vendor_name.toLowerCase().includes(vendorFilter.toLowerCase()));
+
+    return matchesSearch && matchesInvoice && matchesContract && matchesVisa && matchesStatus && matchesVendor;
   });
 
   processedContractors.sort((a, b) => {
@@ -385,8 +421,46 @@ export default function Contractors() {
     </div>
   );
 
+  const activeStats = contractors.filter(c => !c.is_deleted && c.role !== 'ADMIN' && !c.email.includes('admin@'));
+  const statTotalEmployees = activeStats.length;
+  const statW2 = activeStats.filter(c => c.contract_type === 'W2' || !c.contract_type).length; 
+  const statC2C = activeStats.filter(c => c.contract_type === 'C2C').length;
+  const statVendors = clients.length;
+
   return (
     <div>
+      
+      {/* --- KPI DASHBOARD CARDS --- */}
+      {!showArchive && (
+        <div style={styles.kpiGrid}>
+          
+          <div style={{...styles.kpiCard, background: 'linear-gradient(135deg, #9333ea, #6b21a8)'}}>
+            <h3 style={styles.kpiTitle}>Total No of Employees</h3>
+            <p style={styles.kpiValue}>{String(statTotalEmployees).padStart(2, '0')}</p>
+            <span style={styles.kpiBgNum}>{String(statTotalEmployees).padStart(2, '0')}</span>
+          </div>
+          
+          <div style={{...styles.kpiCard, background: 'linear-gradient(135deg, #0ea5e9, #0284c7)'}}>
+            <h3 style={styles.kpiTitle}>Total No of Vendors</h3>
+            <p style={styles.kpiValue}>{String(statVendors).padStart(2, '0')}</p>
+            <span style={styles.kpiBgNum}>{String(statVendors).padStart(2, '0')}</span>
+          </div>
+
+          <div style={{...styles.kpiCard, background: 'linear-gradient(135deg, #f59e0b, #d97706)'}}>
+            <h3 style={styles.kpiTitle}>W2 Employees</h3>
+            <p style={styles.kpiValue}>{String(statW2).padStart(2, '0')}</p>
+            <span style={styles.kpiBgNum}>{String(statW2).padStart(2, '0')}</span>
+          </div>
+
+          <div style={{...styles.kpiCard, background: 'linear-gradient(135deg, #10b981, #059669)'}}>
+            <h3 style={styles.kpiTitle}>C2C Contractors</h3>
+            <p style={styles.kpiValue}>{String(statC2C).padStart(2, '0')}</p>
+            <span style={styles.kpiBgNum}>{String(statC2C).padStart(2, '0')}</span>
+          </div>
+          
+        </div>
+      )}
+
       <div style={styles.header}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -407,34 +481,8 @@ export default function Contractors() {
             {!showArchive && (
               <>
                 <button onClick={exportToCSV} style={styles.exportBtn}>⬇️ Export CSV</button>
-                
-                <select 
-                  value={visaFilter} 
-                  onChange={(e) => setVisaFilter(e.target.value)}
-                  style={styles.searchInput}
-                >
-                  <option value="All">All Visas</option>
-                  <option value="US Citizen">US Citizen</option>
-                  <option value="Green Card">Green Card (GC)</option>
-                  <option value="H1B">H1B</option>
-                  <option value="OPT">OPT</option>
-                  <option value="CPT">CPT</option>
-                  <option value="H4 EAD">H4 EAD</option>
-                  <option value="Other">Other</option>
-                </select>
+                <button onClick={handleOpenAddModal} style={styles.addPrimaryBtn}>+ Add Employee</button>
               </>
-            )}
-
-            <input 
-              type="text" 
-              placeholder="🔍 Search team..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={styles.searchInput}
-            />
-            
-            {!showArchive && (
-              <button onClick={handleOpenAddModal} style={styles.addPrimaryBtn}>+ Add Employee</button>
             )}
           </div>
          
@@ -444,6 +492,8 @@ export default function Contractors() {
       <div style={styles.tableContainer}>
         {loading ? (
           <p style={{ padding: '20px' }}>Loading team...</p>
+        ) : processedContractors.length === 0 && Object.keys(contractors).length > 0 && !showArchive ? (
+           <p style={{ padding: '20px', color: '#6B7280', fontStyle: 'italic' }}>No matches found for your active filters. <span onClick={resetFilters} style={{color: '#4F46E5', cursor: 'pointer', fontWeight: 'bold'}}>Click here to reset.</span></p>
         ) : processedContractors.length === 0 ? (
           <p style={{ padding: '20px', color: '#6B7280', fontStyle: 'italic' }}>
             {showArchive ? 'Your archive is currently empty.' : 'No active contractors found.'}
@@ -452,77 +502,108 @@ export default function Contractors() {
           <>
             <table style={styles.table}>
               <thead>
-                <tr style={styles.tableHead}>
-                  <th style={styles.thSortable} onClick={() => handleSort('first_name')}>Name {sortConfig.key === 'first_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th style={styles.thSortable} onClick={() => handleSort('email')}>Email {sortConfig.key === 'email' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th style={styles.thSortable} onClick={() => handleSort('pay_rate')}>Financials {sortConfig.key === 'pay_rate' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Role / Type</th>
-                  <th style={styles.th}>Actions</th>
+                <tr style={styles.purpleHeader}>
+                  <th style={styles.thSortable} onClick={() => handleSort('invoice_num')}>ID {sortConfig.key === 'invoice_num' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th style={styles.thSortable} onClick={() => handleSort('first_name')}>Employee {sortConfig.key === 'first_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th style={styles.thSortable} onClick={() => handleSort('email')}>Email | Contact {sortConfig.key === 'email' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th style={styles.th}>Contract</th>
+                  <th style={styles.th}>Visa</th>
+                  <th style={styles.th}>Job Status</th>
+                  <th style={styles.th}>Vendor</th>
+                  <th style={styles.th}>Bill Rate</th>
+                  <th style={styles.th}>Pay Rate</th>
+                  <th style={styles.th}></th>
                 </tr>
-              </thead>
-              <tbody>
-                {currentItems.map((user) => (
-                  <tr key={user.id} style={{...styles.tableRow, backgroundColor: showArchive ? '#F3F4F6' : 'white'}}>
-                    <td style={styles.td}>
-                      <strong 
-                        onClick={() => !showArchive && setViewingUser(user)} 
-                        style={{ cursor: showArchive ? 'default' : 'pointer', color: showArchive ? '#6B7280' : '#4F46E5' }}
-                        title={showArchive ? "" : "Click to view full details"}
-                      >
-                        {user.first_name} {user.last_name}
-                      </strong>
+                
+                {!showArchive && (
+                  <tr style={styles.filterRow}>
+                    <td style={styles.filterTd}>
+                      <input type="text" placeholder="Inv ID" value={invoiceSearch} onChange={(e) => setInvoiceSearch(e.target.value)} style={styles.inlineFilterInput} />
                     </td>
-                    <td style={styles.td}>{user.email}</td>
-                    <td style={styles.td}>
-                      {user.pay_rate != null ? (
-                        <span style={styles.rateBadge}>Pay: ${parseFloat(user.pay_rate).toFixed(2)} | Bill: ${parseFloat(user.invoice_rate || 0).toFixed(2)}</span>
-                      ) : (
-                        <span style={styles.badgeInactive}>No Rates Set</span>
-                      )}
+                    <td style={styles.filterTd}>
+                      <input type="text" placeholder="Search name" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={styles.inlineFilterInput} />
                     </td>
-                    <td style={styles.td}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '14px', color: '#111827', fontWeight: '700', textTransform: 'capitalize', letterSpacing: '0.3px', textAlign: 'center' }}>
-                          {user.role || 'Unassigned'}
-                        </span>
-                        <span style={user.is_active !== false ? styles.badgeActive : styles.badgeInactive}>
-                          {user.contract_type || 'W2'} - {user.is_active !== false ? 'Active' : 'Inactive'}
-                        </span>
-                        {(user.contract_type === 'W2' || !user.contract_type) && !showArchive && (
-                          (() => {
-                            const completed = [user.i9_completed, user.w4_completed, user.everify_completed, user.bank_details_completed].filter(Boolean).length;
-                            return (
-                              <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '10px', backgroundColor: completed === 4 ? '#D1FAE5' : '#FEF3C7', color: completed === 4 ? '#065F46' : '#92400E' }}>
-                                {completed === 4 ? '✅ Docs: 4/4' : `⚠️ Docs: ${completed}/4`}
-                              </span>
-                            );
-                          })()
-                        )}
-                      </div>
+                    <td style={styles.filterTd}></td>
+                    <td style={styles.filterTd}>
+                      <select value={contractFilter} onChange={(e) => setContractFilter(e.target.value)} style={styles.inlineFilterSelect}>
+                        <option value="All">All</option>
+                        <option value="W2">W2</option>
+                        <option value="C2C">C2C</option>
+                        <option value="1099">1099</option>
+                      </select>
                     </td>
-                    <td style={styles.td}>
-                      <div style={{ display: 'flex', gap: '5px' }}>
-                        {showArchive ? (
-                          <>
-                            <button onClick={() => handleRestoreContractor(user.id, user.first_name)} style={styles.saveBtn}>
-                              ♻️ Restore
-                            </button>
-                            <button onClick={() => handlePermanentDelete(user.id, user.first_name)} style={styles.criticalBtn} title="Destroy Permanently">
-                              🧨 Delete
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => openInsights(user)} style={styles.insightBtn}>📊 Stats</button>
-                            <button onClick={() => handleEditClick(user)} style={styles.editBtn}>Edit</button>
-                            <button onClick={() => handleArchiveContractor(user.id, user.first_name)} style={styles.archiveBtn} title="Safely Archive">📦</button>
-                            <button onClick={() => handlePermanentDelete(user.id, user.first_name)} style={styles.deleteBtn} title="Permanent Delete">🗑️</button>
-                          </>
-                        )}
-                      </div>
+                    <td style={styles.filterTd}>
+                      <select value={visaFilter} onChange={(e) => setVisaFilter(e.target.value)} style={styles.inlineFilterSelect}>
+                        <option value="All">All</option>
+                        <option value="US Citizen">US Citizen</option>
+                        <option value="Green Card">GC</option>
+                        <option value="H1B">H1B</option>
+                        <option value="OPT">OPT</option>
+                        <option value="CPT">CPT</option>
+                        <option value="H4 EAD">H4 EAD</option>
+                      </select>
+                    </td>
+                    <td style={styles.filterTd}>
+                      <select value={jobStatusFilter} onChange={(e) => setJobStatusFilter(e.target.value)} style={styles.inlineFilterSelect}>
+                        <option value="All">All</option>
+                        <option value="Open">Open</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </td>
+                    <td style={styles.filterTd}>
+                      <input type="text" placeholder="Search" value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} style={styles.inlineFilterInput} />
+                    </td>
+                    <td style={styles.filterTd}></td>
+                    <td style={styles.filterTd}></td>
+                    <td style={{...styles.filterTd, textAlign: 'center'}}>
+                      <span onClick={resetFilters} style={styles.resetText}>reset</span>
                     </td>
                   </tr>
-                ))}
+                )}
+              </thead>
+              <tbody>
+                {currentItems.map((user, index) => {
+                  const isEvenRow = index % 2 === 0;
+                  const rowBg = showArchive ? '#FEE2E2' : (isEvenRow ? 'white' : '#F0F8FF');
+
+                  return (
+                    <tr key={user.id} style={{...styles.tableRow, backgroundColor: rowBg}}>
+                      <td style={styles.tdData}>{user.invoice_num || user.id}</td>
+                      <td style={styles.tdData}>
+                        <div style={{fontWeight: '600', color: '#374151', fontSize: '15px'}}>{user.first_name} {user.last_name}</div>
+                        <div style={{color: '#6B7280', fontSize: '13px', marginTop: '2px'}}>{user.role || 'Unassigned'}</div>
+                      </td>
+                      <td style={styles.tdData}>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: '#374151', fontSize: '14px', marginBottom: '4px'}}>
+                          {user.email} 
+                          <span onClick={() => copyToClipboard(user.email)} style={styles.clipboardIcon} title="Copy Email">📋</span>
+                        </div>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: '#6B7280', fontSize: '14px'}}>
+                          {user.phone_number || '-'} 
+                          {user.phone_number && <span onClick={() => copyToClipboard(user.phone_number)} style={styles.clipboardIcon} title="Copy Phone">📋</span>}
+                        </div>
+                      </td>
+                      <td style={styles.tdData}>
+                        <span style={styles.contractBadge}>{user.contract_type || 'W2'}</span>
+                      </td>
+                      <td style={styles.tdData}>{user.visa_status || '-'}</td>
+                      <td style={styles.tdData}>{user.is_active !== false ? 'Open' : 'Closed'}</td>
+                      <td style={styles.tdData}>{user.vendor_name || '-'}</td>
+                      <td style={styles.tdData}>{user.invoice_rate ? `${parseFloat(user.invoice_rate).toFixed(0)}$` : '-'}</td>
+                      <td style={styles.tdData}>{user.pay_rate ? `${parseFloat(user.pay_rate).toFixed(0)}$` : '-'}</td>
+                      <td style={styles.tdData}>
+                        {showArchive ? (
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                            <button onClick={() => handleRestoreContractor(user.id, user.first_name)} style={styles.saveBtn}>Restore</button>
+                            <button onClick={() => handlePermanentDelete(user.id, user.first_name)} style={styles.criticalBtn}>Delete</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setViewingUser(user)} style={styles.openProfileBtn}>Open Profile</button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
 
@@ -537,7 +618,6 @@ export default function Contractors() {
         )}
       </div>
 
-      {/* --- The "Edit Employee" Modal --- */}
       {editingId && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -559,8 +639,8 @@ export default function Contractors() {
                 <input required type="text" name="last_name" placeholder="Last Name *" value={editFormData.last_name || ''} onChange={handleEditChange} style={styles.input} />
                 <input required type="email" name="email" placeholder="Email Address *" value={editFormData.email || ''} onChange={handleEditChange} style={styles.input} />
                 <input required type="tel" name="phone_number" placeholder="Phone Number *" value={editFormData.phone_number || ''} onChange={handleEditChange} style={styles.input} maxLength="14" pattern="\(\d{3}\) \d{3}-\d{4}" title="Must be a valid US phone number: (XXX) XXX-XXXX" />
-                <input type="date" name="dob" title="Date of Birth" value={formData.dob} onChange={handleChange} style={styles.input} />
-                <select name="visa_status" value={formData.visa_status} onChange={handleChange} style={styles.input}>
+                <input type="date" name="dob" title="Date of Birth" value={editFormData.dob || ''} onChange={handleEditChange} style={styles.input} />
+                <select name="visa_status" value={editFormData.visa_status || ''} onChange={handleEditChange} style={styles.input}>
                   <option value="">-- Select Visa Status --</option>
                   <option value="US Citizen">US Citizen</option>
                   <option value="Green Card">Green Card (GC)</option>
@@ -570,7 +650,7 @@ export default function Contractors() {
                   <option value="H4 EAD">H4 EAD</option>
                   <option value="Other">Other</option>
                 </select>
-                <input type="text" name="address" placeholder="Full Address" value={formData.address} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleChange} />
+                <input type="text" name="address" placeholder="Full Address" value={editFormData.address || ''} style={{...styles.input, gridColumn: 'span 2'}} onChange={handleEditChange} />
               </div>
 
               <h3 style={styles.sectionHeader}>2. Work & Financial Details</h3>
@@ -606,7 +686,6 @@ export default function Contractors() {
                   </div>
               )}
 
-              {/* --- EDIT FORM: W2 COMPLIANCE INTERACTIVE --- */}
               {editFormData.contract_type === 'W2' && (
                   <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #10B981' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>W2 Onboarding Compliance</h4>
@@ -629,12 +708,15 @@ export default function Contractors() {
 
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
+                {/* 🔥 FIX: Safely check for defined client properties */}
                 <select name="vendor_name" value={editFormData.vendor_name || ''} onChange={handleEditClientSelect} style={styles.input}>
                   <option value="">-- Select End Client --</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.company_name || client.name}>
-                      {client.company_name || client.name}
-                    </option>
+                  {clients
+                    .filter(c => c && c.is_active !== false) // Only active clients
+                    .map(client => (
+                      <option key={client.id} value={client.company_name || client.name || ''}>
+                        {client.company_name || client.name || 'Unnamed Client'}
+                      </option>
                   ))}
                 </select>
                 <input type="email" name="vendor_email" value={editFormData.vendor_email || ''} placeholder="Vendor Email" onChange={handleEditChange} style={styles.input} />
@@ -662,19 +744,18 @@ export default function Contractors() {
         </div>
       )}
 
-      {/* "View Details" Modal */}
       {viewingUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
               <div>
                 <h2 style={{ margin: 0, color: '#111827' }}>{viewingUser.first_name} {viewingUser.last_name}</h2>
-                <span style={{ fontSize: '14px', color: '#6B7280' }}>Employee Details</span>
+                <span style={{ fontSize: '14px', color: '#6B7280' }}>Employee Details & Settings</span>
               </div>
               <button onClick={() => setViewingUser(null)} style={styles.closeBtn}>✕</button>
             </div>
             
-            <div style={{ overflowY: 'auto', maxHeight: '70vh', paddingRight: '10px' }}>
+            <div style={{ overflowY: 'auto', maxHeight: '60vh', paddingRight: '10px' }}>
               <h3 style={styles.sectionHeader}>Personal Info</h3>
               <div style={styles.formGrid}>
                 <DetailItem label="Email" value={viewingUser.email} />
@@ -696,12 +777,10 @@ export default function Contractors() {
                 <DetailItem label="Client Bill Rate" value={viewingUser.invoice_rate ? `$${viewingUser.invoice_rate}` : null} />
               </div>
 
-            {/* --- VIEW ONLY: W2 COMPLIANCE (READ-ONLY) --- */}
             {(viewingUser.contract_type === 'W2' || !viewingUser.contract_type) && (
                 <>
                   <h3 style={styles.sectionHeader}>W2 Onboarding Compliance</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
-                    
                     <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', color: '#6B7280', fontWeight: '500' }}>
                       <input type="checkbox" checked={viewingUser.i9_completed || false} disabled style={{ width: '18px', height: '18px', cursor: 'not-allowed' }} />
                       I-9 Form Completed
@@ -718,7 +797,6 @@ export default function Contractors() {
                       <input type="checkbox" checked={viewingUser.bank_details_completed || false} disabled style={{ width: '18px', height: '18px', cursor: 'not-allowed' }} />
                       Bank Details Submitted
                     </label>
-
                   </div>
                 </>
               )}
@@ -747,14 +825,22 @@ export default function Contractors() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button onClick={() => setViewingUser(null)} style={styles.addPrimaryBtn}>Close</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '25px', paddingTop: '15px', borderTop: '1px solid #E5E7EB' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => openInsights(viewingUser)} style={styles.insightBtn}>📊 Financial Stats</button>
+                <button onClick={() => handleEditClick(viewingUser)} style={styles.editBtn}>✏️ Edit Profile</button>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => handleArchiveContractor(viewingUser.id, viewingUser.first_name)} style={styles.archiveBtn} title="Safely Archive">📦 Archive</button>
+                <button onClick={() => handlePermanentDelete(viewingUser.id, viewingUser.first_name)} style={styles.deleteBtn} title="Permanent Delete">🗑️ Delete</button>
+                <button onClick={() => setViewingUser(null)} style={{...styles.cancelBtn, backgroundColor: '#9CA3AF'}}>Close</button>
+              </div>
             </div>
+
           </div>
         </div>
       )}
 
-      {/* "Add Employee" Modal */}
       {isAddModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.largeModalBox}>
@@ -818,7 +904,6 @@ export default function Contractors() {
                   </div>
               )}
 
-              {/* --- ADD FORM: W2 COMPLIANCE INTERACTIVE --- */}
               {formData.contract_type === 'W2' && (
                   <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #10B981' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>W2 Onboarding Compliance</h4>
@@ -838,15 +923,18 @@ export default function Contractors() {
                       </div>
                   </div>
               )}
-             
+              
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
+                {/* 🔥 FIX: Safely check for defined client properties */}
                 <select name="vendor_name" value={formData.vendor_name} onChange={handleClientSelect} style={styles.input}>
                   <option value="">-- Select End Client --</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.company_name || client.name}>
-                      {client.company_name || client.name}
-                    </option>
+                  {clients
+                    .filter(c => c && c.is_active !== false) // Only active clients
+                    .map(client => (
+                      <option key={client.id} value={client.company_name || client.name || ''}>
+                        {client.company_name || client.name || 'Unnamed Client'}
+                      </option>
                   ))}
                 </select>
                 <input type="email" name="vendor_email" value={formData.vendor_email} placeholder="Vendor Email (Auto)" readOnly style={{...styles.input, backgroundColor: '#F3F4F6', cursor: 'not-allowed'}} />
@@ -874,7 +962,6 @@ export default function Contractors() {
         </div>
       )}
 
-      {/* "Financial Insights" Modal */}
       {insightUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
@@ -910,35 +997,45 @@ export default function Contractors() {
 }
 
 const styles = {
-  header: { marginBottom: '30px' },
+  header: { marginBottom: '20px' },
   title: { fontSize: '28px', color: '#111827', margin: '0 0 5px 0' },
   subtitle: { color: '#6B7280', margin: 0 },
   exportBtn: { backgroundColor: '#1F2937', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' },
   addPrimaryBtn: { backgroundColor: '#4F46E5', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
   searchInput: { padding: '10px 15px', borderRadius: '8px', border: '1px solid #D1D5DB', width: '220px', fontSize: '15px' },
-  tableContainer: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden' },
-  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
-  tableHead: { backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' },
-  th: { padding: '15px 20px', color: '#374151', fontWeight: '600', fontSize: '14px' },
-  thSortable: { padding: '15px 20px', color: '#374151', fontWeight: '600', fontSize: '14px', cursor: 'pointer', userSelect: 'none' },
+  
+  tableContainer: { backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflowX: 'auto' },
+  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', whiteSpace: 'nowrap' },
+  
+  purpleHeader: { backgroundColor: '#6366F1', color: 'white' },
+  th: { padding: '12px 15px', fontWeight: '600', fontSize: '13px' },
+  thSortable: { padding: '12px 15px', fontWeight: '600', fontSize: '13px', cursor: 'pointer', userSelect: 'none' },
+  
+  filterRow: { backgroundColor: '#ffffff', borderBottom: '1px solid #E5E7EB' },
+  filterTd: { padding: '8px 10px' },
+  inlineFilterInput: { width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', outline: 'none', fontSize: '13px' },
+  inlineFilterSelect: { width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', outline: 'none', fontSize: '13px' },
+  resetText: { color: '#111827', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', textTransform: 'lowercase' },
+  
   tableRow: { borderBottom: '1px solid #E5E7EB', transition: 'background-color 0.2s' },
-  td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
-  rateBadge: { backgroundColor: '#D1FAE5', color: '#047857', padding: '4px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' },
-  badgeActive: { backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
-  badgeInactive: { backgroundColor: '#F3F4F6', color: '#6B7280', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
+  tdData: { padding: '12px 15px', color: '#4B5563', fontSize: '14px' },
   
-  insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
-  editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
+  contractBadge: { backgroundColor: '#DCFCE7', color: '#166534', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' },
+  clipboardIcon: { cursor: 'pointer', fontSize: '12px', opacity: 0.6 },
   
-  archiveBtn: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
-  deleteBtn: { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
-  criticalBtn: { backgroundColor: '#7F1D1D', color: 'white', border: '1px solid #450A0A', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px' },
+  openProfileBtn: { backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s' },
   
-  saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' },
-  cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
-  pagination: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', borderTop: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' },
-  pageBtn: { padding: '8px 16px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
-  pageInfo: { color: '#6B7280', fontSize: '14px' },
+  insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  archiveBtn: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  deleteBtn: { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  criticalBtn: { backgroundColor: '#7F1D1D', color: 'white', border: '1px solid #450A0A', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  
+  pagination: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', backgroundColor: '#F9FAFB' },
+  pageBtn: { padding: '6px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
+  pageInfo: { color: '#6B7280', fontSize: '13px' },
   
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
@@ -953,5 +1050,11 @@ const styles = {
   statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' },
   statBox: { backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB' },
   statLabel: { margin: 0, fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' },
-  statValue: { margin: '5px 0 0 0', fontSize: '24px', color: '#111827' }
+  statValue: { margin: '5px 0 0 0', fontSize: '24px', color: '#111827' },
+
+  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' },
+  kpiCard: { position: 'relative', padding: '25px', borderRadius: '12px', color: 'white', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
+  kpiTitle: { fontSize: '15px', fontWeight: 'bold', margin: '0 0 10px 0', zIndex: 2, position: 'relative' },
+  kpiValue: { fontSize: '36px', fontWeight: '900', margin: 0, zIndex: 2, position: 'relative' },
+  kpiBgNum: { position: 'absolute', right: '-10px', bottom: '-20px', fontSize: '100px', fontWeight: '900', opacity: 0.15, zIndex: 1, lineHeight: 1 }
 };

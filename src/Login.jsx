@@ -51,6 +51,7 @@ export default function Login() {
 
   return (
     <div style={styles.container}>
+      {/* Left panel is hidden via styles, but kept in code in case you want it back later */}
       <div style={styles.leftPanel}>
         <div style={styles.branding}>
           <h1 style={{...styles.logo, color: themeColor}}>{companyName}</h1>
@@ -96,7 +97,6 @@ export default function Login() {
               />
             </div>
 
-            {/* 🔥 UPDATED: The button now just says "Sign In" */}
             <button type="submit" style={{...styles.button, backgroundColor: themeColor}} disabled={isLoading || !email || !password}>
               {isLoading ? 'Authenticating...' : 'Sign In ➔'}
             </button>
@@ -108,20 +108,38 @@ export default function Login() {
 }
 
 const styles = {
-  container: { display: 'flex', height: '100vh', width: '100vw', fontFamily: 'system-ui, sans-serif' },
-  leftPanel: { flex: 1, backgroundColor: '#0F172A', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px', position: 'relative', overflow: 'hidden', transition: 'all 0.4s ease' },
-  rightPanel: { flex: 1, backgroundColor: '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  // 🔥 THE FINAL FIX: Pinned strictly to the corners to kill all scrollbars
+  container: { 
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    display: 'flex', 
+    fontFamily: 'system-ui, sans-serif',
+    backgroundColor: '#F9FAFB',
+    overflow: 'hidden'
+  },
+  
+  // Hiding the entire left panel
+  leftPanel: { display: 'none' }, 
+  
+  rightPanel: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  
   branding: { zIndex: 10 },
   logo: { fontSize: '48px', margin: '0 0 10px 0', letterSpacing: '-1px', transition: 'color 0.4s ease' },
   tagline: { fontSize: '20px', color: '#94A3B8', margin: 0, fontWeight: '300' },
   circle1: { position: 'absolute', bottom: '-10%', left: '-10%', width: '400px', height: '400px', borderRadius: '50%', transition: 'background 0.4s ease' },
-  loginBox: { backgroundColor: 'white', padding: '50px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', width: '100%', maxWidth: '420px' },
-  title: { fontSize: '28px', margin: '0 0 8px 0', color: '#111827' },
-  subtitle: { color: '#6B7280', margin: '0 0 30px 0', fontSize: '15px' },
+  
+  // The larger, centered login box
+  loginBox: { backgroundColor: 'white', padding: '60px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', width: '100%', maxWidth: '550px' },
+  
+  title: { fontSize: '32px', margin: '0 0 8px 0', color: '#111827' },
+  subtitle: { color: '#6B7280', margin: '0 0 30px 0', fontSize: '16px' },
   errorBox: { backgroundColor: '#FEF2F2', color: '#B91C1C', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '14px', border: '1px solid #FECACA' },
   form: { display: 'flex', flexDirection: 'column', gap: '20px' },
   inputGroup: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  label: { fontSize: '13px', fontWeight: '600', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' },
-  input: { padding: '12px 16px', borderRadius: '8px', fontSize: '15px', backgroundColor: '#F9FAFB', outline: 'none', transition: 'border 0.3s ease' },
-  button: { color: 'white', border: 'none', padding: '14px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', transition: 'background 0.4s ease' }
+  label: { fontSize: '14px', fontWeight: '600', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  input: { padding: '14px 18px', borderRadius: '8px', fontSize: '16px', backgroundColor: '#F9FAFB', outline: 'none', transition: 'border 0.3s ease' },
+  button: { color: 'white', border: 'none', padding: '16px', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', transition: 'background 0.4s ease' }
 };

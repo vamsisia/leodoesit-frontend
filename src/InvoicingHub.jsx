@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June", 
+  "July", "August", "September", "October", "November", "December"
+];
+
 export default function InvoicingHub() {
   const [timesheets, setTimesheets] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Search & Pagination
+  // Search, Filters & Pagination
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterMonth, setFilterMonth] = useState('ALL');
+  const [filterYear, setFilterYear] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
@@ -26,18 +33,17 @@ export default function InvoicingHub() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, filterMonth, filterYear]);
 
-  // --- 🔥 SECURITY HANDSHAKE APPLIED HERE ---
   const fetchHubData = async () => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
       const [tsResponse, clientsResponse] = await Promise.all([
         fetch('http://localhost:5000/api/timesheets?status=APPROVED', {
-          headers: { 'x-tenant-id': admin?.tenant_id } // Handshake 1
+          headers: { 'x-tenant-id': admin?.tenant_id } 
         }),
         fetch('http://localhost:5000/api/clients', {
-          headers: { 'x-tenant-id': admin?.tenant_id } // Handshake 2
+          headers: { 'x-tenant-id': admin?.tenant_id } 
         })
       ]);
       
@@ -67,7 +73,6 @@ export default function InvoicingHub() {
     }
   };
 
-  // --- 🔥 SECURITY HANDSHAKE APPLIED HERE ---
   const executeGenerateInvoice = async (timesheetId, clientId) => {
     setIsProcessing(true);
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
@@ -76,7 +81,6 @@ export default function InvoicingHub() {
       const response = await fetch('http://localhost:5000/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // We pass the tenant_id in the body so the backend can attach it to the invoice!
         body: JSON.stringify({ 
           timesheet_id: timesheetId, 
           client_id: clientId,
@@ -126,19 +130,47 @@ export default function InvoicingHub() {
     setSortConfig({ key, direction });
   };
 
+  const availableYears = [];
+  for (let year = 2025; year <= new Date().getFullYear() + 1; year++) availableYears.push(year);
+
   // --- LOGIC ENGINE ---
   let processedTimesheets = timesheets.filter(ts => {
     const searchString = `${ts.first_name} ${ts.last_name}`.toLowerCase();
-    return searchString.includes(searchTerm.toLowerCase());
+    const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+
+    let matchesMonth = true;
+    let matchesYear = true;
+
+    if (filterMonth !== 'ALL' || filterYear !== 'ALL') {
+      const tsDate = ts.period_start ? new Date(ts.period_start) : null;
+      if (tsDate) {
+        const tsMonth = String(tsDate.getUTCMonth() + 1).padStart(2, '0');
+        const tsYear = String(tsDate.getUTCFullYear());
+        
+        if (filterMonth !== 'ALL') matchesMonth = tsMonth === filterMonth;
+        if (filterYear !== 'ALL') matchesYear = tsYear === filterYear;
+      } else {
+        if (filterMonth !== 'ALL' || filterYear !== 'ALL') matchesMonth = false; 
+      }
+    }
+
+    return matchesSearch && matchesMonth && matchesYear;
   });
 
   processedTimesheets.sort((a, b) => {
     let valA, valB;
+    
+    // Safely fallback to pay_rate if invoice_rate is missing from the backend
+    const rateA = parseFloat(a.invoice_rate || a.pay_rate || 0);
+    const rateB = parseFloat(b.invoice_rate || b.pay_rate || 0);
 
     if (sortConfig.key === 'projected_total') {
-      valA = parseFloat(a.total_hours) * parseFloat(a.pay_rate);
-      valB = parseFloat(b.total_hours) * parseFloat(b.pay_rate);
-    } else if (sortConfig.key === 'total_hours' || sortConfig.key === 'pay_rate') {
+      valA = parseFloat(a.total_hours || 0) * rateA;
+      valB = parseFloat(b.total_hours || 0) * rateB;
+    } else if (sortConfig.key === 'invoice_rate') {
+      valA = rateA;
+      valB = rateB;
+    } else if (sortConfig.key === 'total_hours') {
       valA = parseFloat(a[sortConfig.key] || 0);
       valB = parseFloat(b[sortConfig.key] || 0);
     } else {
@@ -164,13 +196,35 @@ export default function InvoicingHub() {
             <h1 style={styles.title}>Invoicing Hub</h1>
             <p style={styles.subtitle}>Assign approved hours to clients and generate official invoices.</p>
           </div>
-          <div>
+          
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} style={styles.searchInput}>
+              <option value="ALL">All Months</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            
+            <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} style={styles.searchInput}>
+              <option value="ALL">All Years</option>
+              {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+            </select>
+
             <input 
               type="text" 
               placeholder="🔍 Search contractor..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={styles.searchInput}
+              style={{...styles.searchInput, width: '220px'}}
             />
           </div>
         </div>
@@ -183,7 +237,7 @@ export default function InvoicingHub() {
           <div style={styles.emptyState}>
             <div style={styles.emptyStateIcon}>🎉</div>
             <h3 style={{ margin: '10px 0 5px 0', color: '#111827' }}>You are all caught up!</h3>
-            <p style={{ color: '#6B7280', marginBottom: '20px' }}>There are no approved timesheets waiting to be invoiced.</p>
+            <p style={{ color: '#6B7280', marginBottom: '20px' }}>There are no approved timesheets waiting to be invoiced for this period.</p>
             <button onClick={() => navigate('/admin/queue')} style={styles.queueBtn}>
               Check Approval Queue
             </button>
@@ -196,8 +250,8 @@ export default function InvoicingHub() {
                   <th style={styles.thSortable} onClick={() => handleSort('first_name')}>
                     Contractor {sortConfig.key === 'first_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  <th style={styles.thSortable} onClick={() => handleSort('pay_rate')}>
-                    Rate {sortConfig.key === 'pay_rate' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  <th style={styles.thSortable} onClick={() => handleSort('invoice_rate')}>
+                    Bill Rate {sortConfig.key === 'invoice_rate' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
                   <th style={styles.thSortable} onClick={() => handleSort('total_hours')}>
                     Hours {sortConfig.key === 'total_hours' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
@@ -206,12 +260,20 @@ export default function InvoicingHub() {
                     Projected Total {sortConfig.key === 'projected_total' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
                   <th style={styles.th}>Client</th>
+                  
+                  {/* 🔥 NEW COLUMN HEADER */}
+                  <th style={styles.thSortable} onClick={() => handleSort('period_start')}>
+                    Period {sortConfig.key === 'period_start' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  </th>
+                  
                   <th style={styles.th}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {currentItems.map((ts) => {
-                 const projectedTotal = parseFloat(ts.total_hours) * parseFloat(ts.pay_rate);
+                 // 🔥 FIXED: Smart fallback to pay_rate if invoice_rate is missing
+                 const activeRate = parseFloat(ts.invoice_rate || ts.pay_rate || 0);
+                 const projectedTotal = parseFloat(ts.total_hours || 0) * activeRate;
                  
                  // Automatic Client Mapping Logic
                  const matchingClient = clients.find(c => 
@@ -219,10 +281,14 @@ export default function InvoicingHub() {
                  );
                  const isReady = !!matchingClient;
 
+                 // Format the Date for the new column
+                 const tsDate = ts.period_start ? new Date(ts.period_start) : null;
+                 const periodText = tsDate ? `${MONTHS[tsDate.getUTCMonth()]} ${tsDate.getUTCFullYear()}` : 'N/A';
+
                   return (
                     <tr key={ts.id} style={styles.tableRow}>
                       <td style={styles.td}><strong>{ts.first_name} {ts.last_name}</strong></td>
-                      <td style={styles.td}>${parseFloat(ts.pay_rate).toFixed(2)}/hr</td> 
+                      <td style={styles.td}>${activeRate.toFixed(2)}/hr</td> 
                       <td style={styles.td}><strong>{ts.total_hours}</strong></td>
                       
                       <td style={styles.td}>
@@ -231,7 +297,6 @@ export default function InvoicingHub() {
                         </span>
                       </td>
                       
-                      {/* Automated Client Badge */}
                       <td style={styles.td}>
                         {matchingClient ? (
                           <span style={styles.clientBadge}>🏢 {matchingClient.company_name}</span>
@@ -240,6 +305,13 @@ export default function InvoicingHub() {
                             ⚠️ {ts.vendor_name ? `Unmapped: ${ts.vendor_name}` : 'No Vendor Assigned'}
                           </span>
                         )}
+                      </td>
+
+                      {/* 🔥 NEW COLUMN DATA */}
+                      <td style={styles.td}>
+                        <span style={{ color: '#4B5563', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#F3F4F6', padding: '6px 10px', borderRadius: '6px' }}>
+                          🗓️ {periodText}
+                        </span>
                       </td>
                       
                       <td style={styles.td}>
@@ -276,7 +348,6 @@ export default function InvoicingHub() {
         )}
       </div>
 
-      {/* SMART CONFIRMATION MODAL OVERLAY */}
       {modalConfig.isOpen && targetTimesheet && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
@@ -290,7 +361,6 @@ export default function InvoicingHub() {
                 : "Please review the timesheet details before finalizing the official invoice."}
             </p>
 
-            {/* MINI-RECEIPT */}
             <div style={styles.modalReceipt}>
               <div style={{ maxHeight: '150px', overflowY: 'auto', paddingRight: '5px' }}>
                 <div style={styles.receiptRow}>
@@ -298,14 +368,14 @@ export default function InvoicingHub() {
                     <span style={{ fontWeight: 'bold', color: '#111827' }}>{targetTimesheet.first_name} {targetTimesheet.last_name}</span>
                     <br/>
                     <span style={{ color: '#6B7280', fontSize: '13px' }}>
-                      {new Date(targetTimesheet.period_start).toLocaleDateString()} - {new Date(targetTimesheet.period_end).toLocaleDateString()}
+                      {targetTimesheet.period_start ? new Date(targetTimesheet.period_start).toLocaleDateString() : 'N/A'} - {targetTimesheet.period_end ? new Date(targetTimesheet.period_end).toLocaleDateString() : 'N/A'}
                     </span>
                   </div>
                   <div style={{ fontWeight: 'bold', color: '#111827', textAlign: 'right' }}>
                     {targetTimesheet.total_hours} hrs
                     {modalConfig.action === 'GENERATE' && (
                       <div style={{ fontSize: '12px', color: '#10B981', marginTop: '4px' }}>
-                        Ready to Bill
+                        Ready to Bill at ${parseFloat(targetTimesheet.invoice_rate || targetTimesheet.pay_rate || 0).toFixed(2)}/hr
                       </div>
                     )}
                   </div>
@@ -344,7 +414,7 @@ const styles = {
   header: { marginBottom: '30px' },
   title: { fontSize: '28px', color: '#111827', margin: '0 0 5px 0' },
   subtitle: { color: '#6B7280', margin: 0 },
-  searchInput: { padding: '10px 15px', borderRadius: '8px', border: '1px solid #D1D5DB', width: '250px', fontSize: '15px', outline: 'none' },
+  searchInput: { padding: '10px 15px', borderRadius: '8px', border: '1px solid #D1D5DB', fontSize: '14px', outline: 'none' },
   tableContainer: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden', minHeight: '300px' },
   table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
   tableHead: { backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' },
@@ -362,12 +432,10 @@ const styles = {
   pageBtn: { padding: '8px 16px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
   pageInfo: { color: '#6B7280', fontSize: '14px' },
   
-  // Empty State Styles
+  // Modal Styles
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' },
   emptyStateIcon: { fontSize: '48px', marginBottom: '10px' },
   queueBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' },
-
-  // Modal Styles
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '450px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' },
   modalReceipt: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '15px' },

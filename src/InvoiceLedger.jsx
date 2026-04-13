@@ -8,7 +8,7 @@ export default function InvoiceLedger() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMonth, setFilterMonth] = useState('ALL');
   const [filterYear, setFilterYear] = useState('ALL');
-  const [activeTab, setActiveTab] = useState('UNPAID'); // 'ALL', 'UNPAID', 'PAID', 'PARTIAL'
+  const [activeTab, setActiveTab] = useState('UNPAID'); 
   const [sortConfig, setSortConfig] = useState({ key: 'due_date', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 7;
@@ -88,14 +88,21 @@ export default function InvoiceLedger() {
     setSelectedInvoices([]);
 
     setInvoices(prev => {
-      if (action === 'VOID') return prev.filter(inv => !targets.includes(inv.id));
+      if (action === 'VOID') {
+        return prev.map(inv => targets.includes(inv.id) ? { ...inv, status: 'VOID' } : inv);
+      }
       
       return prev.map(inv => {
         if (targets.includes(inv.id)) {
           if (action === 'EMAIL') return { ...inv, emailed_at: new Date().toISOString() };
+          
           if (action === 'PAY') {
-            const addedPayment = partialAmount ? parseFloat(partialAmount) : parseFloat(inv.amount_invoiced);
-            const newTotalPaid = parseFloat(inv.amount_paid || 0) + addedPayment;
+            const currentPaid = parseFloat(inv.amount_paid || 0);
+            const remainingBalance = parseFloat(inv.amount_invoiced) - currentPaid;
+            const addedPayment = partialAmount ? parseFloat(partialAmount) : remainingBalance;
+            
+            const newTotalPaid = currentPaid + addedPayment;
+            
             const newStatus = newTotalPaid >= parseFloat(inv.amount_invoiced) ? 'PAID' : 'PARTIAL';
             return { ...inv, status: newStatus, amount_paid: newTotalPaid };
           }
@@ -110,10 +117,19 @@ export default function InvoiceLedger() {
   const executeBackgroundAction = async (action, targets, paymentAmount) => {
     try {
       for (let id of targets) {
-        if (action === 'EMAIL') await runApiAction(`http://localhost:5000/api/invoices/${id}/send`, 'POST');
-        if (action === 'PAY') await runApiAction(`http://localhost:5000/api/invoices/${id}/pay`, 'PUT', { payment_amount: paymentAmount ? parseFloat(paymentAmount) : null });
-        if (action === 'VOID') await runApiAction(`http://localhost:5000/api/invoices/${id}`, 'DELETE');
-        if (action === 'REMIND') await runApiAction(`http://localhost:5000/api/invoices/${id}/remind`, 'POST');
+        let res; 
+        
+        if (action === 'EMAIL') res = await runApiAction(`http://localhost:5000/api/invoices/${id}/send`, 'POST');
+        if (action === 'PAY') res = await runApiAction(`http://localhost:5000/api/invoices/${id}/pay`, 'PUT', { payment_amount: paymentAmount ? parseFloat(paymentAmount) : null });
+        if (action === 'VOID') res = await runApiAction(`http://localhost:5000/api/invoices/${id}/void`, 'PUT'); 
+        if (action === 'REMIND') res = await runApiAction(`http://localhost:5000/api/invoices/${id}/remind`, 'POST');
+
+        // 🔥 FIX: Check for success and show proper popup
+        if (res && !res.success) {
+           alert(`❌ Action Failed: ${res.error}`);
+        } else if (res && res.success && (action === 'EMAIL' || action === 'REMIND')) {
+           alert(`✅ ${res.message}`); 
+        }
       }
       fetchInvoices(); 
     } catch (error) {
@@ -134,17 +150,11 @@ export default function InvoiceLedger() {
     document.body.removeChild(link);
   };
 
-  // ==============================================
-  // 🔥 THE FIX: TWO-STEP LOGIC ENGINE 
-  // ==============================================
-  
-  // STEP 1: Filter by Month and Year FIRST. 
-  // We use due_date and subtract 30 days to calculate the month the invoice was generated for.
   const dateFilteredInvoices = invoices.filter(inv => {
     if (filterMonth === 'ALL' && filterYear === 'ALL') return true;
     
     const invDate = inv.due_date ? new Date(inv.due_date) : new Date();
-    invDate.setDate(invDate.getDate() - 30); // Shift back to generation month
+    invDate.setDate(invDate.getDate() - 30); 
     
     const invMonth = String(invDate.getMonth() + 1).padStart(2, '0'); 
     const invYear = String(invDate.getFullYear());
@@ -155,9 +165,9 @@ export default function InvoiceLedger() {
     return matchMonth && matchYear;
   });
 
-  // Calculate top KPI numbers using ONLY the Date-Filtered invoices!
-  const totalRevenue = dateFilteredInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
-  const totalCollected = dateFilteredInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_paid || (inv.status === 'PAID' ? inv.amount_invoiced : 0)), 0);
+  const nonVoidInvoices = dateFilteredInvoices.filter(inv => inv.status !== 'VOID');
+  const totalRevenue = nonVoidInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
+  const totalCollected = nonVoidInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_paid || (inv.status === 'PAID' ? inv.amount_invoiced : 0)), 0);
   const totalOutstanding = totalRevenue - totalCollected;
 
   const counts = {
@@ -167,10 +177,13 @@ export default function InvoiceLedger() {
     PAID: dateFilteredInvoices.filter(i => i.status === 'PAID').length
   };
 
-  // STEP 2: Filter by Search & Tabs for the actual table rows
   let processedInvoices = dateFilteredInvoices.filter(inv => {
     const matchesSearch = `${inv.client_name} ${inv.invoice_number} ${inv.first_name}`.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesTab = activeTab === 'ALL' ? true : (activeTab === 'PAID' ? inv.status === 'PAID' : inv.status !== 'PAID');
+    
+    let matchesTab = true;
+    if (activeTab === 'UNPAID') matchesTab = inv.status === 'UNPAID' || inv.status === 'PARTIAL';
+    if (activeTab === 'PAID') matchesTab = inv.status === 'PAID';
+    
     return matchesSearch && matchesTab;
   });
   
@@ -186,11 +199,11 @@ export default function InvoiceLedger() {
   const currentItems = processedInvoices.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleSelectAll = (e) => {
-    if (e.target.checked) setSelectedInvoices(currentItems.filter(i => i.status !== 'PAID').map(i => i.id));
+    if (e.target.checked) setSelectedInvoices(currentItems.filter(i => i.status !== 'PAID' && i.status !== 'VOID').map(i => i.id));
     else setSelectedInvoices([]);
   };
 
-  const selectableItems = currentItems.filter(i => i.status !== 'PAID');
+  const selectableItems = currentItems.filter(i => i.status !== 'PAID' && i.status !== 'VOID');
   const isAllSelected = selectableItems.length > 0 && selectableItems.every(i => selectedInvoices.includes(i.id));
 
   const toggleSelection = (e, id) => {
@@ -202,15 +215,23 @@ export default function InvoiceLedger() {
   for (let year = 2025; year <= new Date().getFullYear() + 1; year++) availableYears.push(year);
 
   const getBadgeStyle = (status) => {
-    if (status === 'PAID') return styles.badgePaid;
-    if (status === 'PARTIAL') return styles.badgePartial;
-    return styles.badgeUnpaid;
+    if (status === 'PAID') return { ...styles.badgePaid, backgroundColor: '#D1FAE5', color: '#047857' };
+    if (status === 'PARTIAL') return { ...styles.badgePartial, backgroundColor: '#DBEAFE', color: '#1E40AF' };
+    if (status === 'VOID') return { ...styles.badgeUnpaid, backgroundColor: '#F3F4F6', color: '#4B5563' };
+    return { ...styles.badgeUnpaid, backgroundColor: '#FEF3C7', color: '#D97706' };
+  };
+
+  const getBadgeText = (inv) => {
+    if (inv.status === 'PARTIAL') {
+       const balance = parseFloat(inv.amount_invoiced || 0) - parseFloat(inv.amount_paid || 0);
+       return `PARTIAL ($${balance.toFixed(2)} DUE)`;
+    }
+    return inv.status || 'UNPAID';
   };
 
   return (
     <div style={{ position: 'relative' }}>
       
-      {/* TOP-LEVEL FINANCIAL METRICS */}
       <div style={styles.kpiGrid}>
         <div style={styles.kpiCard}>
           <p style={styles.kpiLabel}>Total Pipeline Revenue</p>
@@ -226,7 +247,6 @@ export default function InvoiceLedger() {
         </div>
       </div>
 
-      {/* TABBED INTERFACE */}
       <div style={styles.tabContainer}>
         <button onClick={() => setActiveTab('UNPAID')} style={activeTab === 'UNPAID' ? styles.tabActive : styles.tabInactive}>
           🔴 Action Required (Unpaid/Partial) <span style={styles.badge}>{counts.UNPAID + counts.PARTIAL}</span>
@@ -302,7 +322,7 @@ export default function InvoiceLedger() {
               {currentItems.map((inv) => (
                 <tr key={inv.id} onClick={() => setDrawerInvoice(inv)} style={styles.tableRow}>
                   <td style={{ padding: '15px' }} onClick={e => e.stopPropagation()}>
-                  {inv.status !== 'PAID' && (
+                  {inv.status !== 'PAID' && inv.status !== 'VOID' && (
                     <input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={(e) => toggleSelection(e, inv.id)} />
                   )}
                   </td>
@@ -313,7 +333,7 @@ export default function InvoiceLedger() {
                   
                   <td style={styles.td}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-                      <span style={getBadgeStyle(inv.status)}>{inv.status || 'UNPAID'}</span>
+                      <span style={getBadgeStyle(inv.status)}>{getBadgeText(inv)}</span>
                       {inv.emailed_at && (
                         <span style={styles.badgeEmailed} title={`Sent: ${new Date(inv.emailed_at).toLocaleString()}`}>
                           📬 Sent
@@ -325,13 +345,40 @@ export default function InvoiceLedger() {
                   <td style={styles.td} onClick={e => e.stopPropagation()}>
                     <div style={styles.actionGroup}>
                       <button onClick={(e) => downloadPDF(e, inv)} style={styles.downloadBtn}>📄 PDF</button>
-                      {inv.status !== 'PAID' && (
-                        <button 
-                          onClick={() => handleActionClick('EMAIL', inv.id, false)} 
-                          style={{...styles.downloadBtn, backgroundColor: inv.emailed_at ? '#6B7280' : '#3B82F6'}}
-                        >
-                          {inv.emailed_at ? '✉️ Resend' : '✉️ Email'}
-                        </button>
+                      
+                      {/* 🔥 FIX: Remind button injected natively into the quick actions */}
+                      {inv.status !== 'PAID' && inv.status !== 'VOID' && (
+                        <>
+                          {inv.status === 'PARTIAL' ? (
+                            <button 
+                              onClick={() => handleActionClick('REMIND', inv.id, false)} 
+                              style={{...styles.downloadBtn, backgroundColor: '#F59E0B'}}
+                            >
+                              🔔 Remind
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => handleActionClick('EMAIL', inv.id, false)} 
+                              style={{...styles.downloadBtn, backgroundColor: inv.emailed_at ? '#6B7280' : '#3B82F6'}}
+                            >
+                              {inv.emailed_at ? '✉️ Resend' : '✉️ Email'}
+                            </button>
+                          )}
+                          
+                          <button 
+                            onClick={() => handleActionClick('PAY', inv.id, false)} 
+                            style={{...styles.downloadBtn, backgroundColor: '#10B981'}}
+                          >
+                            💳 Pay
+                          </button>
+                          
+                          <button 
+                            onClick={() => handleActionClick('VOID', inv.id, false)} 
+                            style={{...styles.downloadBtn, backgroundColor: '#EF4444'}}
+                          >
+                            🚫 Void
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -342,7 +389,6 @@ export default function InvoiceLedger() {
         )}
       </div>
 
-      {/* QUICK VIEW DRAWER */}
       {drawerInvoice && (
         <div style={styles.drawerOverlay} onClick={() => setDrawerInvoice(null)}>
           <div style={styles.drawerPanel} onClick={e => e.stopPropagation()}>
@@ -353,13 +399,12 @@ export default function InvoiceLedger() {
             
             <div style={{ padding: '20px' }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={getBadgeStyle(drawerInvoice.status)}>Status: {drawerInvoice.status}</span>
+                <span style={getBadgeStyle(drawerInvoice.status)}>{getBadgeText(drawerInvoice)}</span>
                 {drawerInvoice.emailed_at && <span style={styles.badgeEmailed}>📬 Sent</span>}
               </div>
               
               <h1 style={{ fontSize: '36px', margin: '15px 0 5px 0' }}>${parseFloat(drawerInvoice.amount_invoiced).toFixed(2)}</h1>
               
-              {/* BALANCE CALCULATOR IN DRAWER */}
               <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#F3F4F6', padding: '10px', borderRadius: '8px', marginBottom: '20px' }}>
                 <div>
                   <span style={{ fontSize: '12px', color: '#6B7280' }}>Amount Paid</span>
@@ -385,7 +430,7 @@ export default function InvoiceLedger() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '30px' }}>
                 <button onClick={(e) => downloadPDF(e, drawerInvoice)} style={{...styles.submitBtn, backgroundColor: '#1F2937'}}>📄 Download PDF</button>
-                {drawerInvoice.status !== 'PAID' && (
+                {drawerInvoice.status !== 'PAID' && drawerInvoice.status !== 'VOID' && (
                   <>
                     {drawerInvoice.status === 'PARTIAL' && (
                        <button onClick={() => handleActionClick('REMIND', drawerInvoice.id, false)} style={{...styles.submitBtn, backgroundColor: '#F59E0B'}}>
@@ -403,7 +448,6 @@ export default function InvoiceLedger() {
         </div>
       )}
 
-      {/* SMART CONFIRMATION MODAL OVERLAY */}
       {confirmModal.isOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
@@ -421,8 +465,6 @@ export default function InvoiceLedger() {
                   ? invoices.filter(inv => selectedInvoices.includes(inv.id))
                   : invoices.filter(inv => inv.id === confirmModal.targetId);
                 
-                const totalActionAmount = targetInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
-
                 return (
                   <>
                     <div style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '5px' }}>
@@ -432,7 +474,9 @@ export default function InvoiceLedger() {
                             <span style={{ fontWeight: 'bold', color: '#111827' }}>{inv.invoice_number || `INV-${inv.id.substring(0,6).toUpperCase()}`}</span>
                             <br/><span style={{ color: '#6B7280', fontSize: '13px' }}>Client: {inv.client_name}</span>
                           </div>
-                          <div style={{ fontWeight: 'bold', color: '#111827' }}>${parseFloat(inv.amount_invoiced).toFixed(2)}</div>
+                          <div style={{ fontWeight: 'bold', color: '#111827' }}>
+                            ${(parseFloat(inv.amount_invoiced) - parseFloat(inv.amount_paid || 0)).toFixed(2)} Due
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -441,7 +485,6 @@ export default function InvoiceLedger() {
               })()}
             </div>
 
-            {/* 🔥 NEW: Partial Payment Input Box! */}
             {confirmModal.action === 'PAY' && !confirmModal.isBulk && (
               <div style={{ marginTop: '20px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
@@ -451,6 +494,7 @@ export default function InvoiceLedger() {
                   <span style={{ position: 'absolute', left: '12px', top: '10px', color: '#6B7280', fontWeight: 'bold' }}>$</span>
                   <input 
                     type="number" 
+                    step="0.01" 
                     placeholder="Enter partial amount..."
                     value={partialAmount}
                     onChange={(e) => setPartialAmount(e.target.value)}
@@ -469,7 +513,7 @@ export default function InvoiceLedger() {
               {confirmModal.action === 'EMAIL' && "✉️ The clients listed above will receive an official email with PDF attachments."}
               {confirmModal.action === 'PAY' && "💰 This will update the ledger. If a partial amount is entered, the status will change to PARTIAL."}
               {confirmModal.action === 'REMIND' && "🔔 The client will receive an email reminding them of the outstanding balance due."}
-              {confirmModal.action === 'VOID' && "⚠️ WARNING: Voiding these invoices will permanently delete them."}
+              {confirmModal.action === 'VOID' && "⚠️ WARNING: Voiding this invoice will cancel it, remove it from your revenue, and return the original timesheet back to the Invoicing Hub."}
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
@@ -514,10 +558,9 @@ const styles = {
   tableRow: { borderBottom: '1px solid #E5E7EB', cursor: 'pointer', transition: 'background-color 0.2s' },
   td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
   
-  // Status Badges
-  badgeUnpaid: { backgroundColor: '#FEF3C7', color: '#D97706', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
-  badgePartial: { backgroundColor: '#DBEAFE', color: '#1E40AF', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
-  badgePaid: { backgroundColor: '#D1FAE5', color: '#047857', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
+  badgeUnpaid: { padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
+  badgePartial: { padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
+  badgePaid: { padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
   badgeEmailed: { backgroundColor: '#E0E7FF', color: '#4338CA', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #C7D2FE' },
   
   actionGroup: { display: 'flex', gap: '8px' },
