@@ -124,7 +124,6 @@ export default function InvoiceLedger() {
         if (action === 'VOID') res = await runApiAction(`http://localhost:5000/api/invoices/${id}/void`, 'PUT'); 
         if (action === 'REMIND') res = await runApiAction(`http://localhost:5000/api/invoices/${id}/remind`, 'POST');
 
-        // 🔥 FIX: Check for success and show proper popup
         if (res && !res.success) {
            alert(`❌ Action Failed: ${res.error}`);
         } else if (res && res.success && (action === 'EMAIL' || action === 'REMIND')) {
@@ -167,8 +166,17 @@ export default function InvoiceLedger() {
 
   const nonVoidInvoices = dateFilteredInvoices.filter(inv => inv.status !== 'VOID');
   const totalRevenue = nonVoidInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
-  const totalCollected = nonVoidInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_paid || (inv.status === 'PAID' ? inv.amount_invoiced : 0)), 0);
+  
+  const totalCollected = nonVoidInvoices.reduce((sum, inv) => {
+    const paidAmt = parseFloat(inv.amount_paid || 0);
+    if (paidAmt > 0) return sum + paidAmt;
+    if (inv.status === 'PAID') return sum + parseFloat(inv.amount_invoiced || 0);
+    return sum;
+  }, 0);
+
   const totalOutstanding = totalRevenue - totalCollected;
+  const isNetCredit = totalOutstanding < 0;
+  const displayOutstanding = Math.abs(totalOutstanding);
 
   const counts = {
     ALL: dateFilteredInvoices.length,
@@ -214,18 +222,27 @@ export default function InvoiceLedger() {
   const availableYears = [];
   for (let year = 2025; year <= new Date().getFullYear() + 1; year++) availableYears.push(year);
 
-  const getBadgeStyle = (status) => {
-    if (status === 'PAID') return { ...styles.badgePaid, backgroundColor: '#D1FAE5', color: '#047857' };
-    if (status === 'PARTIAL') return { ...styles.badgePartial, backgroundColor: '#DBEAFE', color: '#1E40AF' };
-    if (status === 'VOID') return { ...styles.badgeUnpaid, backgroundColor: '#F3F4F6', color: '#4B5563' };
+  const getBadgeStyle = (inv) => {
+    if (inv.status === 'PAID') {
+        const invoiced = parseFloat(inv.amount_invoiced || 0);
+        const paid = parseFloat(inv.amount_paid || 0);
+        if (paid > invoiced) {
+            return { ...styles.badgePaid, backgroundColor: '#EDE9FE', color: '#6D28D9', border: '1px solid #DDD6FE' }; 
+        }
+        return { ...styles.badgePaid, backgroundColor: '#D1FAE5', color: '#047857' }; 
+    }
+    if (inv.status === 'PARTIAL') return { ...styles.badgePartial, backgroundColor: '#DBEAFE', color: '#1E40AF' };
+    if (inv.status === 'VOID') return { ...styles.badgeUnpaid, backgroundColor: '#F3F4F6', color: '#4B5563' };
     return { ...styles.badgeUnpaid, backgroundColor: '#FEF3C7', color: '#D97706' };
   };
 
   const getBadgeText = (inv) => {
-    if (inv.status === 'PARTIAL') {
-       const balance = parseFloat(inv.amount_invoiced || 0) - parseFloat(inv.amount_paid || 0);
-       return `PARTIAL ($${balance.toFixed(2)} DUE)`;
-    }
+    const invoiced = parseFloat(inv.amount_invoiced || 0);
+    const paid = parseFloat(inv.amount_paid || 0);
+    const balance = invoiced - paid;
+
+    if (inv.status === 'PARTIAL') return `PARTIAL ($${balance.toFixed(2)} DUE)`;
+    if (inv.status === 'PAID' && paid > invoiced) return `OVERPAID (+$${Math.abs(balance).toFixed(2)})`;
     return inv.status || 'UNPAID';
   };
 
@@ -237,10 +254,14 @@ export default function InvoiceLedger() {
           <p style={styles.kpiLabel}>Total Pipeline Revenue</p>
           <h2 style={styles.kpiValue}>${totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
         </div>
-        <div style={{...styles.kpiCard, borderLeft: '4px solid #F59E0B'}}>
-          <p style={styles.kpiLabel}>Outstanding Balance</p>
-          <h2 style={{...styles.kpiValue, color: '#D97706'}}>${totalOutstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
+
+        <div style={{...styles.kpiCard, borderLeft: `4px solid ${isNetCredit ? '#8B5CF6' : '#F59E0B'}`}}>
+          <p style={styles.kpiLabel}>{isNetCredit ? 'Net Credit / Overpaid' : 'Outstanding Balance'}</p>
+          <h2 style={{...styles.kpiValue, color: isNetCredit ? '#7C3AED' : '#D97706'}}>
+            {isNetCredit ? '+' : ''}${displayOutstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}
+          </h2>
         </div>
+
         <div style={{...styles.kpiCard, borderLeft: '4px solid #10B981'}}>
           <p style={styles.kpiLabel}>Collected (Paid)</p>
           <h2 style={{...styles.kpiValue, color: '#059669'}}>${totalCollected.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
@@ -333,7 +354,7 @@ export default function InvoiceLedger() {
                   
                   <td style={styles.td}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-                      <span style={getBadgeStyle(inv.status)}>{getBadgeText(inv)}</span>
+                      <span style={getBadgeStyle(inv)}>{getBadgeText(inv)}</span>
                       {inv.emailed_at && (
                         <span style={styles.badgeEmailed} title={`Sent: ${new Date(inv.emailed_at).toLocaleString()}`}>
                           📬 Sent
@@ -346,17 +367,17 @@ export default function InvoiceLedger() {
                     <div style={styles.actionGroup}>
                       <button onClick={(e) => downloadPDF(e, inv)} style={styles.downloadBtn}>📄 PDF</button>
                       
-                      {/* 🔥 FIX: Remind button injected natively into the quick actions */}
-                      {inv.status !== 'PAID' && inv.status !== 'VOID' && (
+                      {inv.status !== 'VOID' && (
                         <>
-                          {inv.status === 'PARTIAL' ? (
+                          {inv.status === 'PARTIAL' && (
                             <button 
                               onClick={() => handleActionClick('REMIND', inv.id, false)} 
                               style={{...styles.downloadBtn, backgroundColor: '#F59E0B'}}
                             >
                               🔔 Remind
                             </button>
-                          ) : (
+                          )}
+                          {inv.status === 'UNPAID' && (
                             <button 
                               onClick={() => handleActionClick('EMAIL', inv.id, false)} 
                               style={{...styles.downloadBtn, backgroundColor: inv.emailed_at ? '#6B7280' : '#3B82F6'}}
@@ -367,9 +388,9 @@ export default function InvoiceLedger() {
                           
                           <button 
                             onClick={() => handleActionClick('PAY', inv.id, false)} 
-                            style={{...styles.downloadBtn, backgroundColor: '#10B981'}}
+                            style={{...styles.downloadBtn, backgroundColor: inv.status === 'PAID' ? '#8B5CF6' : '#10B981'}}
                           >
-                            💳 Pay
+                            {inv.status === 'PAID' ? '✏️ Adjust' : '💳 Pay'}
                           </button>
                           
                           <button 
@@ -399,7 +420,7 @@ export default function InvoiceLedger() {
             
             <div style={{ padding: '20px' }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={getBadgeStyle(drawerInvoice.status)}>{getBadgeText(drawerInvoice)}</span>
+                <span style={getBadgeStyle(drawerInvoice)}>{getBadgeText(drawerInvoice)}</span>
                 {drawerInvoice.emailed_at && <span style={styles.badgeEmailed}>📬 Sent</span>}
               </div>
               
@@ -411,10 +432,18 @@ export default function InvoiceLedger() {
                   <div style={{ fontWeight: 'bold', color: '#059669' }}>${parseFloat(drawerInvoice.amount_paid || 0).toFixed(2)}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '12px', color: '#6B7280' }}>Balance Due</span>
-                  <div style={{ fontWeight: 'bold', color: '#DC2626' }}>
-                    ${(parseFloat(drawerInvoice.amount_invoiced) - parseFloat(drawerInvoice.amount_paid || 0)).toFixed(2)}
-                  </div>
+                  {(() => {
+                    const bal = parseFloat(drawerInvoice.amount_invoiced) - parseFloat(drawerInvoice.amount_paid || 0);
+                    const isOver = bal < 0;
+                    return (
+                      <>
+                        <span style={{ fontSize: '12px', color: '#6B7280' }}>{isOver ? 'Credit Issued' : 'Balance Due'}</span>
+                        <div style={{ fontWeight: 'bold', color: isOver ? '#7C3AED' : '#DC2626' }}>
+                          {isOver ? '+' : ''}${Math.abs(bal).toFixed(2)}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
               
@@ -430,7 +459,8 @@ export default function InvoiceLedger() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '30px' }}>
                 <button onClick={(e) => downloadPDF(e, drawerInvoice)} style={{...styles.submitBtn, backgroundColor: '#1F2937'}}>📄 Download PDF</button>
-                {drawerInvoice.status !== 'PAID' && drawerInvoice.status !== 'VOID' && (
+                
+                {drawerInvoice.status !== 'VOID' && (
                   <>
                     {drawerInvoice.status === 'PARTIAL' && (
                        <button onClick={() => handleActionClick('REMIND', drawerInvoice.id, false)} style={{...styles.submitBtn, backgroundColor: '#F59E0B'}}>
@@ -438,7 +468,9 @@ export default function InvoiceLedger() {
                        </button>
                     )}
                     
-                    <button onClick={() => handleActionClick('PAY', drawerInvoice.id, false)} style={{...styles.submitBtn, backgroundColor: '#10B981'}}>Record Payment</button>
+                    <button onClick={() => handleActionClick('PAY', drawerInvoice.id, false)} style={{...styles.submitBtn, backgroundColor: drawerInvoice.status === 'PAID' ? '#8B5CF6' : '#10B981'}}>
+                      {drawerInvoice.status === 'PAID' ? '✏️ Adjust / Refund Overpayment' : 'Record Payment'}
+                    </button>
                     <button onClick={() => handleActionClick('VOID', drawerInvoice.id, false)} style={{...styles.submitBtn, backgroundColor: '#EF4444'}}>Void Invoice</button>
                   </>
                 )}
@@ -452,7 +484,7 @@ export default function InvoiceLedger() {
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
             <h3 style={{ marginTop: 0, fontSize: '20px', color: confirmModal.action === 'VOID' ? '#DC2626' : '#111827' }}>
-              Confirm {confirmModal.action === 'EMAIL' ? 'Email Dispatch' : confirmModal.action === 'PAY' ? 'Payment' : confirmModal.action === 'REMIND' ? 'Balance Reminder' : 'Void Action'}
+              Confirm {confirmModal.action === 'EMAIL' ? 'Email Dispatch' : confirmModal.action === 'PAY' ? 'Payment Adjustment' : confirmModal.action === 'REMIND' ? 'Balance Reminder' : 'Void Action'}
             </h3>
             
             <p style={{ color: '#4B5563', fontSize: '14px', marginBottom: '15px' }}>
@@ -468,17 +500,21 @@ export default function InvoiceLedger() {
                 return (
                   <>
                     <div style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '5px' }}>
-                      {targetInvoices.map(inv => (
-                        <div key={inv.id} style={styles.receiptRow}>
-                          <div>
-                            <span style={{ fontWeight: 'bold', color: '#111827' }}>{inv.invoice_number || `INV-${inv.id.substring(0,6).toUpperCase()}`}</span>
-                            <br/><span style={{ color: '#6B7280', fontSize: '13px' }}>Client: {inv.client_name}</span>
+                      {targetInvoices.map(inv => {
+                        const bal = parseFloat(inv.amount_invoiced) - parseFloat(inv.amount_paid || 0);
+                        const isOver = bal < 0;
+                        return (
+                          <div key={inv.id} style={styles.receiptRow}>
+                            <div>
+                              <span style={{ fontWeight: 'bold', color: '#111827' }}>{inv.invoice_number || `INV-${inv.id.substring(0,6).toUpperCase()}`}</span>
+                              <br/><span style={{ color: '#6B7280', fontSize: '13px' }}>Client: {inv.client_name}</span>
+                            </div>
+                            <div style={{ fontWeight: 'bold', color: isOver ? '#7C3AED' : '#111827' }}>
+                              {isOver ? `+$${Math.abs(bal).toFixed(2)} Overpaid` : `$${Math.max(bal, 0).toFixed(2)} Due`}
+                            </div>
                           </div>
-                          <div style={{ fontWeight: 'bold', color: '#111827' }}>
-                            ${(parseFloat(inv.amount_invoiced) - parseFloat(inv.amount_paid || 0)).toFixed(2)} Due
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 );
@@ -487,18 +523,29 @@ export default function InvoiceLedger() {
 
             {confirmModal.action === 'PAY' && !confirmModal.isBulk && (
               <div style={{ marginTop: '20px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
-                  Payment Amount Received (Leave blank for full amount)
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '4px' }}>
+                  Amount to Apply
                 </label>
+                <p style={{ fontSize: '12px', color: '#6B7280', marginBottom: '10px' }}>
+                  <em>*Leave blank to automatically balance to $0.00. Enter a negative number (e.g., -500) to manually refund.</em>
+                </p>
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '12px', top: '10px', color: '#6B7280', fontWeight: 'bold' }}>$</span>
                   <input 
                     type="number" 
                     step="0.01" 
-                    placeholder="Enter partial amount..."
+                    placeholder="Enter amount..."
                     value={partialAmount}
                     onChange={(e) => setPartialAmount(e.target.value)}
-                    style={{ width: '100%', padding: '10px 10px 10px 25px', borderRadius: '8px', border: '1px solid #D1D5DB', fontSize: '15px', outline: 'none' }}
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px 10px 10px 25px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #D1D5DB', 
+                      fontSize: '15px', 
+                      outline: 'none',
+                      boxSizing: 'border-box' /* 🔥 FIX: This keeps it inside the modal! */
+                    }}
                   />
                 </div>
               </div>
@@ -511,7 +558,7 @@ export default function InvoiceLedger() {
               color: confirmModal.action === 'VOID' ? '#991B1B' : '#3730A3' 
             }}>
               {confirmModal.action === 'EMAIL' && "✉️ The clients listed above will receive an official email with PDF attachments."}
-              {confirmModal.action === 'PAY' && "💰 This will update the ledger. If a partial amount is entered, the status will change to PARTIAL."}
+              {confirmModal.action === 'PAY' && "💰 This will update the ledger. If you leave the box blank, any overpayments will be automatically refunded."}
               {confirmModal.action === 'REMIND' && "🔔 The client will receive an email reminding them of the outstanding balance due."}
               {confirmModal.action === 'VOID' && "⚠️ WARNING: Voiding this invoice will cancel it, remove it from your revenue, and return the original timesheet back to the Invoicing Hub."}
             </div>

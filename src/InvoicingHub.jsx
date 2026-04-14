@@ -25,6 +25,9 @@ export default function InvoicingHub() {
   const [modalConfig, setModalConfig] = useState({ isOpen: false, action: '', targetId: null, targetClientId: null });
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // 🔥 FIX 2: State to hold manual client mapping overrides
+  const [manualMappings, setManualMappings] = useState({});
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -130,6 +133,14 @@ export default function InvoicingHub() {
     setSortConfig({ key, direction });
   };
 
+  // 🔥 FIX: Handle manual dropdown mapping
+  const handleManualMap = (timesheetId, clientId) => {
+    setManualMappings(prev => ({
+        ...prev,
+        [timesheetId]: clientId
+    }));
+  };
+
   const availableYears = [];
   for (let year = 2025; year <= new Date().getFullYear() + 1; year++) availableYears.push(year);
 
@@ -160,7 +171,6 @@ export default function InvoicingHub() {
   processedTimesheets.sort((a, b) => {
     let valA, valB;
     
-    // Safely fallback to pay_rate if invoice_rate is missing from the backend
     const rateA = parseFloat(a.invoice_rate || a.pay_rate || 0);
     const rateB = parseFloat(b.invoice_rate || b.pay_rate || 0);
 
@@ -259,29 +269,28 @@ export default function InvoicingHub() {
                   <th style={styles.thSortable} onClick={() => handleSort('projected_total')}>
                     Projected Total {sortConfig.key === 'projected_total' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  <th style={styles.th}>Client</th>
-                  
-                  {/* 🔥 NEW COLUMN HEADER */}
+                  <th style={styles.th}>Client Map</th>
                   <th style={styles.thSortable} onClick={() => handleSort('period_start')}>
                     Period {sortConfig.key === 'period_start' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  
                   <th style={styles.th}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {currentItems.map((ts) => {
-                 // 🔥 FIXED: Smart fallback to pay_rate if invoice_rate is missing
                  const activeRate = parseFloat(ts.invoice_rate || ts.pay_rate || 0);
                  const projectedTotal = parseFloat(ts.total_hours || 0) * activeRate;
                  
-                 // Automatic Client Mapping Logic
-                 const matchingClient = clients.find(c => 
-                   c.company_name.trim().toLowerCase() === (ts.vendor_name || '').trim().toLowerCase()
-                 );
+                 // 🔥 FIX: Check Manual Mappings First, then Auto-Map
+                 let matchingClient;
+                 if (manualMappings[ts.id]) {
+                    matchingClient = clients.find(c => c.id === parseInt(manualMappings[ts.id]));
+                 } else {
+                    matchingClient = clients.find(c => c.company_name.trim().toLowerCase() === (ts.vendor_name || '').trim().toLowerCase());
+                 }
+                 
                  const isReady = !!matchingClient;
 
-                 // Format the Date for the new column
                  const tsDate = ts.period_start ? new Date(ts.period_start) : null;
                  const periodText = tsDate ? `${MONTHS[tsDate.getUTCMonth()]} ${tsDate.getUTCFullYear()}` : 'N/A';
 
@@ -298,16 +307,26 @@ export default function InvoicingHub() {
                       </td>
                       
                       <td style={styles.td}>
-                        {matchingClient ? (
-                          <span style={styles.clientBadge}>🏢 {matchingClient.company_name}</span>
-                        ) : (
-                          <span style={styles.missingClientBadge}>
-                            ⚠️ {ts.vendor_name ? `Unmapped: ${ts.vendor_name}` : 'No Vendor Assigned'}
-                          </span>
-                        )}
+                        {/* 🔥 FIX: Smart Dropdown for mapping clients */}
+                        <select 
+                            value={matchingClient ? matchingClient.id : ""}
+                            onChange={(e) => handleManualMap(ts.id, e.target.value)}
+                            style={{
+                                ...styles.searchInput, 
+                                padding: '6px 10px', 
+                                backgroundColor: isReady ? '#EEF2FF' : '#FEF2F2',
+                                color: isReady ? '#4F46E5' : '#DC2626',
+                                border: `1px solid ${isReady ? '#C7D2FE' : '#FECACA'}`,
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            <option value="" disabled>⚠️ Unmapped: {ts.vendor_name || 'Unknown'}</option>
+                            {clients.map(c => (
+                                <option key={c.id} value={c.id}>{c.company_name}</option>
+                            ))}
+                        </select>
                       </td>
 
-                      {/* 🔥 NEW COLUMN DATA */}
                       <td style={styles.td}>
                         <span style={{ color: '#4B5563', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#F3F4F6', padding: '6px 10px', borderRadius: '6px' }}>
                           🗓️ {periodText}
@@ -423,8 +442,6 @@ const styles = {
   tableRow: { borderBottom: '1px solid #E5E7EB' },
   td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
   projectedBadge: { backgroundColor: '#F0FDF4', color: '#166534', padding: '6px 12px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', border: '1px solid #BBF7D0' },
-  clientBadge: { backgroundColor: '#EEF2FF', color: '#4F46E5', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', border: '1px solid #C7D2FE', display: 'inline-block' },
-  missingClientBadge: { backgroundColor: '#FEF2F2', color: '#DC2626', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', border: '1px solid #FECACA', display: 'inline-block' },
   invoiceBtnReady: { backgroundColor: '#4F46E5', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' },
   invoiceBtnDisabled: { backgroundColor: '#E5E7EB', color: '#9CA3AF', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'not-allowed' },
   voidBtn: { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' },
