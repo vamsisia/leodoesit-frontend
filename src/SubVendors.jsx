@@ -1,38 +1,39 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Vendors() {
-  const [clients, setClients] = useState([]);
+export default function SubVendors() {
+  const [subVendors, setSubVendors] = useState([]);
   const [invoices, setInvoices] = useState([]); // 🔥 NEW: Fetching invoices for the Stats math
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [viewingClient, setViewingClient] = useState(null); 
+  const [viewingSV, setViewingSV] = useState(null); 
   const [insightData, setInsightData] = useState(null); // 🔥 NEW: State for the Stats Dashboard
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const initialFormState = {
-    company_name: '', billing_email: '', phone_number: '', net_terms: 'Net 30', address: ''
+  const initialFormState = { 
+    company_name: '', billing_email: '', billing_phone: '', net_terms: 'Net 30', address: '', status: 'Active'
   };
   const [formData, setFormData] = useState(initialFormState);
   const [editFormData, setEditFormData] = useState({});
 
   useEffect(() => {
-    fetchClients();
+    fetchSubVendors();
     fetchInvoices(); // 🔥 NEW: Call invoices on load
   }, []);
 
-  const fetchClients = async () => {
+  const fetchSubVendors = async () => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      const response = await fetch('http://localhost:5000/api/clients', {
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id }
+      const response = await fetch('http://localhost:5000/api/sub_vendors', {
+        headers: { 'x-tenant-id': admin?.tenant_id }
       });
       const data = await response.json();
-      if (data.success) setClients(data.data);
+      if (data.success) setSubVendors(data.data);
     } catch (error) {
-      console.error("Failed to fetch vendors:", error);
+      console.error("Failed to fetch sub vendors:", error);
     } finally {
       setLoading(false);
     }
@@ -50,48 +51,50 @@ export default function Vendors() {
     } catch (error) { console.error("Failed to fetch invoices:", error); }
   };
 
-  const handleToggleStatus = async (client) => {
-    const newStatus = client.is_active === false ? true : false;
-    setClients(clients.map(item => item.id === client.id ? { ...item, is_active: newStatus } : item));
+  const handleToggleStatus = async (sv) => {
+    const newStatus = (sv.status === 'Active' || !sv.status) ? 'Inactive' : 'Active';
+    
+    setSubVendors(subVendors.map(item => item.id === sv.id ? { ...item, status: newStatus } : item));
 
     try {
-      const response = await fetch(`http://localhost:5000/api/clients/${client.id}`, {
+      const response = await fetch(`http://localhost:5000/api/sub_vendors/${sv.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...client, is_active: newStatus })
+        body: JSON.stringify({ ...sv, status: newStatus })
       });
       const data = await response.json();
       
       if (!data.success) {
-        setClients(clients.map(item => item.id === client.id ? { ...item, is_active: client.is_active } : item));
+        setSubVendors(subVendors.map(item => item.id === sv.id ? { ...item, status: sv.status } : item));
         alert("Failed to update status: " + data.error);
       }
     } catch (error) {
-      setClients(clients.map(item => item.id === client.id ? { ...item, is_active: client.is_active } : item));
+      setSubVendors(subVendors.map(item => item.id === sv.id ? { ...item, status: sv.status } : item));
       alert("Network error while updating status.");
     }
   };
 
-  // 🔥 NEW: Math logic for the Stats Dashboard
-  const openInsights = (client) => {
-    setViewingClient(null); // Close other modals if open
+  // 🔥 NEW: Math logic for the Sub Vendor Stats Dashboard
+  const openInsights = (sv) => {
+    setViewingSV(null); // Close view modal if open
     
-    // Find all invoices associated with this vendor's company name
-    const clientInvoices = invoices.filter(inv => 
-      (inv.client_name && inv.client_name.toLowerCase() === client.company_name.toLowerCase()) || 
-      (inv.vendor_name && inv.vendor_name.toLowerCase() === client.company_name.toLowerCase())
+    // Find all invoices associated with this sub vendor
+    const svInvoices = invoices.filter(inv => 
+      (inv.c2c_name && inv.c2c_name.toLowerCase() === sv.company_name.toLowerCase()) ||
+      (inv.vendor_name && inv.vendor_name.toLowerCase() === sv.company_name.toLowerCase()) ||
+      (inv.client_name && inv.client_name.toLowerCase() === sv.company_name.toLowerCase())
     );
     
     // Calculate totals
-    const totalBilled = clientInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || inv.total_amount || 0), 0);
-    const totalPaid = clientInvoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || inv.total_amount || 0), 0);
+    const totalBilled = svInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || inv.total_amount || 0), 0);
+    const totalPaid = svInvoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || inv.total_amount || 0), 0);
 
     setInsightData({
-      company_name: client.company_name,
+      company_name: sv.company_name,
       totalBilled,
       totalPaid,
       pendingAmount: totalBilled - totalPaid,
-      invoiceCount: clientInvoices.length
+      invoiceCount: svInvoices.length
     });
   };
 
@@ -105,22 +108,25 @@ export default function Vendors() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: name === 'phone_number' ? formatPhoneNumber(value) : value });
+    setFormData({ ...formData, [name]: name === 'billing_phone' ? formatPhoneNumber(value) : value });
   };
 
   const handleEditChange = (e) => {
     const { name, value, type, checked } = e.target;
-    const finalValue = type === 'checkbox' ? checked : value;
-    setEditFormData({ ...editFormData, [name]: name === 'phone_number' ? formatPhoneNumber(finalValue) : finalValue });
+    if (type === 'checkbox' && name === 'is_active') {
+        setEditFormData({ ...editFormData, status: checked ? 'Active' : 'Inactive' });
+    } else {
+        setEditFormData({ ...editFormData, [name]: name === 'billing_phone' ? formatPhoneNumber(value) : value });
+    }
   };
 
-  const handleAddClient = async (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
 
     try {
-      const response = await fetch('http://localhost:5000/api/clients', {
+      const response = await fetch('http://localhost:5000/api/sub_vendors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, tenant_id: admin?.tenant_id })
@@ -128,56 +134,64 @@ export default function Vendors() {
       const data = await response.json();
       
       if (data.success) {
-        fetchClients();
+        fetchSubVendors();
         setIsAddModalOpen(false);
         setFormData(initialFormState);
       } else {
-        alert("❌ Failed to add vendor: " + data.error);
+        alert("Failed to add Sub Vendor: " + data.error);
       }
-    } catch (error) { alert("❌ Network error."); } finally { setIsSubmitting(false); }
+    } catch (error) {
+      alert("Network error.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/clients/${editingId}`, {
+      const response = await fetch(`http://localhost:5000/api/sub_vendors/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editFormData)
       });
       const data = await response.json();
       if (data.success) {
-        setClients(clients.map(c => c.id === editingId ? { ...c, ...data.data } : c));
+        setSubVendors(subVendors.map(sv => sv.id === editingId ? { ...sv, ...data.data } : sv));
         setEditingId(null);
       } else {
-        alert("❌ Failed to update vendor: " + data.error);
+        alert("❌ Failed to update Sub Vendor: " + data.error);
       }
-    } catch (error) { alert("❌ Failed to connect to server."); } finally { setIsSubmitting(false); }
+    } catch (error) { 
+        alert("❌ Failed to connect to server."); 
+    } finally { 
+        setIsSubmitting(false); 
+    }
   };
 
   const exportToCSV = () => {
     const headers = ['Company Name', 'Billing Email', 'Phone Number', 'Net Terms', 'Status', 'Address'];
-    const csvData = clients.map(c => [
-      c.company_name || c.name, 
-      c.billing_email || c.email, 
-      c.phone_number || '',
-      c.net_terms || '',
-      c.is_active !== false ? 'Active' : 'Inactive',
-      c.address || ''
+    const csvData = subVendors.map(sv => [
+      sv.company_name, 
+      sv.billing_email || '', 
+      sv.billing_phone || '',
+      sv.net_terms || '',
+      sv.status || 'Active',
+      sv.address || ''
     ]);
     const csvContent = [headers.join(','), ...csvData.map(row => `"${row.join('","')}"`)].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'Vendor_Directory.csv');
+    link.setAttribute('download', 'SubVendor_Directory.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const filteredClients = clients.filter(c => {
-    const searchString = `${c.company_name || c.name} ${c.billing_email || c.email}`.toLowerCase();
+  const filteredList = subVendors.filter(sv => {
+    const searchString = `${sv.company_name} ${sv.billing_email}`.toLowerCase();
     return searchString.includes(searchTerm.toLowerCase());
   });
 
@@ -193,28 +207,28 @@ export default function Vendors() {
       <div style={styles.header}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={styles.title}>Vendor Directory</h1>
-            <p style={styles.subtitle}>Manage active vendors, update billing contacts, and track revenue.</p>
+            <h1 style={styles.title}>Sub Vendors (C2C)</h1>
+            <p style={styles.subtitle}>Manage your Corp-to-Corp partners for the contractor roster.</p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={exportToCSV} style={styles.exportBtn}>⬇️ Export CSV</button>
             <input 
               type="text" 
-              placeholder="🔍 Search vendors..." 
+              placeholder="🔍 Search company..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={styles.searchInput}
             />
-            <button onClick={() => setIsAddModalOpen(true)} style={styles.addPrimaryBtn}>+ Add Vendor</button>
+            <button onClick={() => { setFormData(initialFormState); setIsAddModalOpen(true); }} style={styles.addPrimaryBtn}>+ Add Sub Vendor</button>
           </div>
         </div>
       </div>
 
       <div style={styles.tableContainer}>
         {loading ? (
-          <p style={{ padding: '20px' }}>Loading vendors...</p>
-        ) : filteredClients.length === 0 ? (
-          <p style={{ padding: '20px', color: '#6B7280', fontStyle: 'italic' }}>No vendors found.</p>
+          <p style={{ padding: '20px' }}>Loading Sub Vendors...</p>
+        ) : filteredList.length === 0 ? (
+          <p style={{ padding: '20px', color: '#6B7280', fontStyle: 'italic' }}>No Sub Vendors found.</p>
         ) : (
           <table style={styles.table}>
             <thead>
@@ -227,38 +241,38 @@ export default function Vendors() {
               </tr>
             </thead>
             <tbody>
-              {filteredClients.map((client) => (
-                <tr key={client.id} style={styles.tableRow}>
+              {filteredList.map(sv => (
+                <tr key={sv.id} style={styles.tableRow}>
                   <td style={styles.td}>
                     <strong 
-                      onClick={() => setViewingClient(client)} 
+                      onClick={() => setViewingSV(sv)} 
                       style={styles.clickableName}
                       title="Click to view full details"
                     >
-                      {client.company_name || client.name}
+                      {sv.company_name}
                     </strong>
                   </td>
-                  <td style={styles.td}>{client.billing_email || client.email || '-'}</td>
-                  <td style={styles.td}>{client.phone_number || '-'}</td>
+                  <td style={styles.td}>{sv.billing_email || '-'}</td>
+                  <td style={styles.td}>{sv.billing_phone || '-'}</td>
                   <td style={styles.td}>
                     <span 
-                      onClick={() => handleToggleStatus(client)}
+                      onClick={() => handleToggleStatus(sv)}
                       style={{
-                        ...(client.is_active !== false ? styles.badgeActive : styles.badgeInactive),
+                        ...(sv.status === 'Active' || !sv.status ? styles.badgeActive : styles.badgeInactive),
                         cursor: 'pointer'
                       }}
                       title="Click to instantly toggle status"
                     >
-                      {client.is_active !== false ? 'Active' : 'Inactive'}
+                      {sv.status === 'Active' || !sv.status ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td style={{...styles.td, textAlign: 'center'}}>
                     {/* 🔥 UPDATED: This button now triggers the dashboard! */}
-                    <button onClick={() => openInsights(client)} style={styles.insightBtn}>📊 Stats</button>
+                    <button onClick={() => openInsights(sv)} style={styles.insightBtn}>📊 Stats</button>
                     <button 
                       onClick={() => {
-                        setEditingId(client.id);
-                        setEditFormData({ ...client, is_active: client.is_active !== false }); 
+                        setEditingId(sv.id);
+                        setEditFormData({ ...sv }); 
                       }} 
                       style={styles.editBtn}
                     >
@@ -283,7 +297,7 @@ export default function Vendors() {
             <h3 style={{ marginTop: 0, color: '#4F46E5' }}>{insightData.company_name}</h3>
             <div style={styles.statsGrid}>
               <div style={styles.statBox}>
-                <p style={styles.statLabel}>Total Billed to Vendor</p>
+                <p style={styles.statLabel}>Total Billed to Sub Vendor</p>
                 <h3 style={styles.statValue}>${insightData.totalBilled.toFixed(2)}</h3>
               </div>
               <div style={styles.statBox}>
@@ -304,53 +318,54 @@ export default function Vendors() {
         </div>
       )}
 
-      {/* --- VIEW VENDOR DETAILS MODAL --- */}
-      {viewingClient && (
+      {/* --- VIEW DETAILS MODAL --- */}
+      {viewingSV && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
               <div>
-                <h2 style={{ margin: 0, color: '#111827' }}>{viewingClient.company_name || viewingClient.name}</h2>
+                <h2 style={{ margin: 0, color: '#111827' }}>{viewingSV.company_name}</h2>
                 <span style={{ fontSize: '14px', color: '#6B7280' }}>
-                    {viewingClient.is_active !== false ? '🟢 Active Vendor' : '⚫ Inactive Vendor'}
+                    {viewingSV.status === 'Active' || !viewingSV.status ? '🟢 Active Sub Vendor' : '⚫ Inactive Sub Vendor'}
                 </span>
               </div>
-              <button onClick={() => setViewingClient(null)} style={styles.closeBtn}>✕</button>
+              <button onClick={() => setViewingSV(null)} style={styles.closeBtn}>✕</button>
             </div>
             
             <div>
-              <DetailItem label="Billing Email" value={viewingClient.billing_email || viewingClient.email} />
-              <DetailItem label="Phone Number" value={viewingClient.phone_number} />
-              <DetailItem label="Net Terms" value={viewingClient.net_terms} />
-              <DetailItem label="Full Billing Address" value={viewingClient.address || viewingClient.vendor_address} />
+              <DetailItem label="Billing Email" value={viewingSV.billing_email} />
+              <DetailItem label="Phone Number" value={viewingSV.billing_phone} />
+              <DetailItem label="Net Terms" value={viewingSV.net_terms} />
+              <DetailItem label="Full Billing Address" value={viewingSV.address} />
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #E5E7EB' }}>
-              <button onClick={() => setViewingClient(null)} style={styles.addPrimaryBtn}>Close</button>
+              <button onClick={() => setViewingSV(null)} style={styles.addPrimaryBtn}>Close</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- ADD VENDOR MODAL --- */}
+      {/* --- ADD MODAL --- */}
       {isAddModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: '#111827' }}>Add New Vendor</h2>
+              <h2 style={{ margin: 0, color: '#111827' }}>Add New Sub Vendor</h2>
               <button onClick={() => setIsAddModalOpen(false)} style={styles.closeBtn}>✕</button>
             </div>
-            <form onSubmit={handleAddClient} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            
+            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <input required type="text" name="company_name" placeholder="Company Name *" value={formData.company_name} onChange={handleChange} style={styles.input} />
-              <input required type="email" name="billing_email" placeholder="Billing Email Address *" value={formData.billing_email} onChange={handleChange} style={styles.input} />
-              <input type="tel" name="phone_number" placeholder="Phone Number" value={formData.phone_number} onChange={handleChange} style={styles.input} maxLength="14" />
+              <input type="email" name="billing_email" placeholder="Billing Email Address" value={formData.billing_email} onChange={handleChange} style={styles.input} />
+              <input type="tel" name="billing_phone" placeholder="Phone Number" value={formData.billing_phone} onChange={handleChange} style={styles.input} maxLength="14" />
               <input type="text" name="net_terms" placeholder="Net Terms (e.g. Net 30)" value={formData.net_terms} onChange={handleChange} style={styles.input} />
               <textarea name="address" placeholder="Full Billing Address" value={formData.address} onChange={handleChange} style={{...styles.input, height: '80px', resize: 'vertical'}} />
-              
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsAddModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={styles.saveBtn}>
-                  {isSubmitting ? 'Saving...' : 'Add Vendor'}
+                  {isSubmitting ? 'Saving...' : 'Add Sub Vendor'}
                 </button>
               </div>
             </form>
@@ -358,35 +373,35 @@ export default function Vendors() {
         </div>
       )}
 
-      {/* --- EDIT VENDOR MODAL --- */}
+      {/* --- EDIT MODAL --- */}
       {editingId && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB', paddingBottom: '15px', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: '#111827' }}>Edit Vendor</h2>
+              <h2 style={{ margin: 0, color: '#111827' }}>Edit Sub Vendor</h2>
               <button onClick={() => setEditingId(null)} style={styles.closeBtn}>✕</button>
             </div>
+            
             <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              
               <label style={{ backgroundColor: '#F9FAFB', padding: '12px 15px', borderRadius: '6px', border: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
                 <input 
                   type="checkbox" 
                   name="is_active" 
-                  checked={editFormData.is_active !== false} 
+                  checked={editFormData.status === 'Active' || !editFormData.status} 
                   onChange={handleEditChange} 
                   style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
                 />
                 <span style={{ fontSize: '14px', color: '#111827', fontWeight: 'bold' }}>
-                  Vendor is Active
+                  Sub Vendor is Active
                 </span>
               </label>
 
-              <input required type="text" name="company_name" placeholder="Company Name *" value={editFormData.company_name || editFormData.name || ''} onChange={handleEditChange} style={styles.input} />
-              <input required type="email" name="billing_email" placeholder="Billing Email Address *" value={editFormData.billing_email || editFormData.email || ''} onChange={handleEditChange} style={styles.input} />
-              <input type="tel" name="phone_number" placeholder="Phone Number" value={editFormData.phone_number || ''} onChange={handleEditChange} style={styles.input} maxLength="14" />
+              <input required type="text" name="company_name" placeholder="Company Name *" value={editFormData.company_name || ''} onChange={handleEditChange} style={styles.input} />
+              <input type="email" name="billing_email" placeholder="Billing Email Address" value={editFormData.billing_email || ''} onChange={handleEditChange} style={styles.input} />
+              <input type="tel" name="billing_phone" placeholder="Phone Number" value={editFormData.billing_phone || ''} onChange={handleEditChange} style={styles.input} maxLength="14" />
               <input type="text" name="net_terms" placeholder="Net Terms (e.g. Net 30)" value={editFormData.net_terms || ''} onChange={handleEditChange} style={styles.input} />
-              <textarea name="address" placeholder="Full Billing Address" value={editFormData.address || editFormData.vendor_address || ''} onChange={handleEditChange} style={{...styles.input, height: '80px', resize: 'vertical'}} />
-              
+              <textarea name="address" placeholder="Full Billing Address" value={editFormData.address || ''} onChange={handleEditChange} style={{...styles.input, height: '80px', resize: 'vertical'}} />
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={styles.saveBtn}>
@@ -397,7 +412,6 @@ export default function Vendors() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -434,6 +448,7 @@ const styles = {
   saveBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
 
+  // 🔥 NEW STYLES for the Dashboard
   statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' },
   statBox: { backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '8px', border: '1px solid #E5E7EB' },
   statLabel: { margin: 0, fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' },

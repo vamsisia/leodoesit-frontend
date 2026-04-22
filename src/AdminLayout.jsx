@@ -65,9 +65,17 @@ export default function AdminLayout() {
           <Link to="/admin/ledger" style={path.includes('/ledger') ? styles.activeNavItem : styles.navItem}>
             📚 Invoice Ledger
           </Link>
+          
+          {/* 🔥 RENAMED: Clients to Vendors */}
           <Link to="/admin/clients" style={path.includes('/clients') ? styles.activeNavItem : styles.navItem}>
-            🏢 Clients
+            🏢 Vendors
           </Link>
+          
+          {/* 🔥 NEW: Sub Vendors Page Link */}
+          <Link to="/admin/sub-vendors" style={path.includes('/sub-vendors') ? styles.activeNavItem : styles.navItem}>
+            🤝 Sub Vendors
+          </Link>
+          
           <Link to="/admin/contractors" style={path.includes('/contractors') ? styles.activeNavItem : styles.navItem}>
             👷 Contractors
           </Link>

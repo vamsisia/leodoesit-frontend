@@ -10,6 +10,9 @@ import Clients from '../src/clients.jsx'
 import Contractors from './Contractors.jsx'
 import Login from './Login.jsx'
 
+// 🔥 NEW: Import the Sub Vendors component
+import SubVendors from './SubVendors.jsx' 
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
@@ -31,6 +34,10 @@ createRoot(document.getElementById('root')).render(
           <Route path="hub" element={<InvoicingHub />} />
           <Route path="ledger" element={<InvoiceLedger />} />
           <Route path="clients" element={<Clients />} />
+          
+          {/* 🔥 NEW ROUTE: Sub Vendors */}
+          <Route path="sub-vendors" element={<SubVendors />} />
+          
           <Route path="contractors" element={<Contractors />} />
         </Route>
       </Routes>

@@ -137,16 +137,12 @@ export default function InvoiceLedger() {
     }
   };
 
+  // 🔥 CHANGED: This is the updated PDF opener function for AWS S3
   const downloadPDF = (e, invoice) => {
     e.stopPropagation(); 
-    const downloadUrl = `http://localhost:5000/api/invoices/${invoice.id}/download`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    const invNumber = invoice.invoice_number || `INV-${invoice.id.substring(0,6).toUpperCase()}`;
-    link.setAttribute('download', `${invNumber}_Invoice.pdf`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Simply open the backend download route in a new tab. 
+    // Your Node.js backend will then automatically redirect this tab to the secure AWS URL.
+    window.open(`http://localhost:5000/api/invoices/${invoice.id}/download`, '_blank');
   };
 
   const dateFilteredInvoices = invoices.filter(inv => {
@@ -365,7 +361,7 @@ export default function InvoiceLedger() {
 
                   <td style={styles.td} onClick={e => e.stopPropagation()}>
                     <div style={styles.actionGroup}>
-                      <button onClick={(e) => downloadPDF(e, inv)} style={styles.downloadBtn}>📄 PDF</button>
+                      <button onClick={(e) => downloadPDF(e, inv)} style={{...styles.downloadBtn, backgroundColor: '#374151'}}>📄 View Invoice</button>
                       
                       {inv.status !== 'VOID' && (
                         <>
@@ -458,7 +454,7 @@ export default function InvoiceLedger() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '30px' }}>
-                <button onClick={(e) => downloadPDF(e, drawerInvoice)} style={{...styles.submitBtn, backgroundColor: '#1F2937'}}>📄 Download PDF</button>
+                <button onClick={(e) => downloadPDF(e, drawerInvoice)} style={{...styles.submitBtn, backgroundColor: '#1F2937'}}>📄 Download PDF Invoice</button>
                 
                 {drawerInvoice.status !== 'VOID' && (
                   <>
@@ -544,7 +540,7 @@ export default function InvoiceLedger() {
                       border: '1px solid #D1D5DB', 
                       fontSize: '15px', 
                       outline: 'none',
-                      boxSizing: 'border-box' /* 🔥 FIX: This keeps it inside the modal! */
+                      boxSizing: 'border-box' 
                     }}
                   />
                 </div>

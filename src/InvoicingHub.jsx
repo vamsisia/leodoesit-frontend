@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June", 
-  "July", "August", "September", "October", "November", "December"
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
 
 export default function InvoicingHub() {
@@ -25,7 +25,7 @@ export default function InvoicingHub() {
   const [modalConfig, setModalConfig] = useState({ isOpen: false, action: '', targetId: null, targetClientId: null });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // 🔥 FIX 2: State to hold manual client mapping overrides
+  // State to hold manual client mapping overrides (only for unmapped ones)
   const [manualMappings, setManualMappings] = useState({});
 
   const navigate = useNavigate();
@@ -133,7 +133,6 @@ export default function InvoicingHub() {
     setSortConfig({ key, direction });
   };
 
-  // 🔥 FIX: Handle manual dropdown mapping
   const handleManualMap = (timesheetId, clientId) => {
     setManualMappings(prev => ({
         ...prev,
@@ -281,7 +280,7 @@ export default function InvoicingHub() {
                  const activeRate = parseFloat(ts.invoice_rate || ts.pay_rate || 0);
                  const projectedTotal = parseFloat(ts.total_hours || 0) * activeRate;
                  
-                 // 🔥 FIX: Check Manual Mappings First, then Auto-Map
+                 // Smart Mapping
                  let matchingClient;
                  if (manualMappings[ts.id]) {
                     matchingClient = clients.find(c => c.id === parseInt(manualMappings[ts.id]));
@@ -291,6 +290,7 @@ export default function InvoicingHub() {
                  
                  const isReady = !!matchingClient;
 
+                 // 🔥 FIXED: Shorter, cleaner date format
                  const tsDate = ts.period_start ? new Date(ts.period_start) : null;
                  const periodText = tsDate ? `${MONTHS[tsDate.getUTCMonth()]} ${tsDate.getUTCFullYear()}` : 'N/A';
 
@@ -307,29 +307,35 @@ export default function InvoicingHub() {
                       </td>
                       
                       <td style={styles.td}>
-                        {/* 🔥 FIX: Smart Dropdown for mapping clients */}
-                        <select 
-                            value={matchingClient ? matchingClient.id : ""}
-                            onChange={(e) => handleManualMap(ts.id, e.target.value)}
-                            style={{
-                                ...styles.searchInput, 
-                                padding: '6px 10px', 
-                                backgroundColor: isReady ? '#EEF2FF' : '#FEF2F2',
-                                color: isReady ? '#4F46E5' : '#DC2626',
-                                border: `1px solid ${isReady ? '#C7D2FE' : '#FECACA'}`,
-                                fontWeight: 'bold'
-                            }}
-                        >
-                            <option value="" disabled>⚠️ Unmapped: {ts.vendor_name || 'Unknown'}</option>
-                            {clients.map(c => (
-                                <option key={c.id} value={c.id}>{c.company_name}</option>
-                            ))}
-                        </select>
+                        {/* 🔥 FIXED: Only show dropdown if unmapped. Otherwise, show a locked badge. */}
+                        {isReady ? (
+                          <div style={styles.lockedClientBadge}>
+                            ✅ {matchingClient.company_name}
+                          </div>
+                        ) : (
+                          <select 
+                              value={""}
+                              onChange={(e) => handleManualMap(ts.id, e.target.value)}
+                              style={{
+                                  ...styles.searchInput, 
+                                  padding: '6px 10px', 
+                                  backgroundColor: '#FEF2F2',
+                                  color: '#DC2626',
+                                  border: '1px solid #FECACA',
+                                  fontWeight: 'bold'
+                              }}
+                          >
+                              <option value="" disabled>⚠️ Unmapped: {ts.vendor_name || 'Unknown'}</option>
+                              {clients.map(c => (
+                                  <option key={c.id} value={c.id}>{c.company_name}</option>
+                              ))}
+                          </select>
+                        )}
                       </td>
 
                       <td style={styles.td}>
-                        <span style={{ color: '#4B5563', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#F3F4F6', padding: '6px 10px', borderRadius: '6px' }}>
-                          🗓️ {periodText}
+                        <span style={{ color: '#4B5563', fontSize: '13px', fontWeight: 'bold' }}>
+                          {periodText}
                         </span>
                       </td>
                       
@@ -442,6 +448,10 @@ const styles = {
   tableRow: { borderBottom: '1px solid #E5E7EB' },
   td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
   projectedBadge: { backgroundColor: '#F0FDF4', color: '#166534', padding: '6px 12px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', border: '1px solid #BBF7D0' },
+  
+  // 🔥 NEW STYLE: Locked Client Badge
+  lockedClientBadge: { backgroundColor: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', display: 'inline-block' },
+  
   invoiceBtnReady: { backgroundColor: '#4F46E5', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' },
   invoiceBtnDisabled: { backgroundColor: '#E5E7EB', color: '#9CA3AF', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'not-allowed' },
   voidBtn: { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' },

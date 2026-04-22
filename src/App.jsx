@@ -9,7 +9,7 @@ const MONTHS = [
 
 export default function Portal() {
   const [user, setUser] = useState(null);
-  const [timesheets, setTimesheets] = useState([]); // 🔥 NEW: Stores history of all timesheets
+  const [timesheets, setTimesheets] = useState([]); 
   const [loading, setLoading] = useState(true);
   
   // Dynamic Branding State
@@ -22,11 +22,16 @@ export default function Portal() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false); 
   
-  // 🔥 NEW: Sidebar Selection State
+  // Sidebar Selection State
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() === 0 ? 11 : new Date().getMonth() - 1);
   const [viewYear, setViewYear] = useState(new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear());
   
+  // 🔥 NEW: Get exact current date constraints for the dropdowns
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth();
+  const currentYear = currentDate.getFullYear();
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -57,7 +62,6 @@ export default function Portal() {
       const response = await fetch(`http://localhost:5000/api/timesheets/me/${email}`);
       const data = await response.json();
       if (data.success) {
-        // Safely store as an array so we can search history
         setTimesheets(Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []));
       }
     } catch (error) {
@@ -105,7 +109,7 @@ export default function Portal() {
 
       const data = await response.json();
       if (data.success) {
-        await fetchMyTimesheets(user.email); // Refresh history
+        await fetchMyTimesheets(user.email); 
         setIsModalOpen(false);
         setIsCreatingNew(false); 
         setHours('');
@@ -126,13 +130,23 @@ export default function Portal() {
     navigate('/');
   };
 
+  // 🔥 NEW: Safe Year Change Handler
+  const handleYearChange = (e) => {
+    const selectedYear = parseInt(e.target.value);
+    setViewYear(selectedYear);
+    setIsCreatingNew(false);
+    
+    // Safety check: If they switch to the current year, but have a future month selected, boot them back to the current month!
+    if (selectedYear === currentYear && parseInt(viewMonth) > currentMonth) {
+      setViewMonth(currentMonth);
+    }
+  };
+
   if (loading || !user) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading Portal...</div>;
 
-  // 🔥 FIND ACTIVE TIMESHEET: Search history for the currently selected Month & Year
   const displayedTimesheet = timesheets.find(ts => {
     if (!ts.period_start) return false;
     const tsDate = new Date(ts.period_start);
-    // Using UTC ensures timezone math doesn't accidentally shift the month backwards
     return tsDate.getUTCMonth() === parseInt(viewMonth) && tsDate.getUTCFullYear() === parseInt(viewYear);
   });
 
@@ -152,7 +166,6 @@ export default function Portal() {
         </div>
       </nav>
 
-      {/* 🔥 NEW: 2-Column Split Layout */}
       <div style={styles.portalLayout}>
         
         {/* --- LEFT SIDEBAR: Period Selector & Status --- */}
@@ -167,21 +180,26 @@ export default function Portal() {
                 onChange={(e) => { setViewMonth(e.target.value); setIsCreatingNew(false); }} 
                 style={styles.input}
               >
-                {MONTHS.map((month, index) => (
-                  <option key={index} value={index}>{month}</option>
-                ))}
+                {MONTHS.map((month, index) => {
+                  // 🔥 NEW: Hide any month in the dropdown that hasn't happened yet in the current year
+                  if (parseInt(viewYear) === currentYear && index > currentMonth) {
+                    return null;
+                  }
+                  return <option key={index} value={index}>{month}</option>;
+                })}
               </select>
             </div>
             
             <div style={styles.inputGroup}>
               <label style={styles.label}>Year</label>
+              {/* 🔥 NEW: Wired up the safe year change handler */}
               <select 
                 value={viewYear} 
-                onChange={(e) => { setViewYear(e.target.value); setIsCreatingNew(false); }} 
+                onChange={handleYearChange} 
                 style={styles.input}
               >
-                <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
-                <option value={new Date().getFullYear() - 1}>{new Date().getFullYear() - 1}</option>
+                <option value={currentYear}>{currentYear}</option>
+                <option value={currentYear - 1}>{currentYear - 1}</option>
               </select>
             </div>
           </div>
@@ -259,7 +277,6 @@ export default function Portal() {
                   <h1 style={styles.title}>Submit Your Hours</h1>
                   <p style={styles.subtitle}>Logging hours for <strong>{MONTHS[viewMonth]} {viewYear}</strong>.</p>
                 </div>
-                {/* Cancel button if they manually clicked Add New but want to go back to an empty view */}
                 <button onClick={() => setIsCreatingNew(false)} style={styles.cancelBtn}>Cancel</button>
               </div>
 
@@ -317,7 +334,7 @@ export default function Portal() {
             
           ) : (
             
-            /* VIEW 3: EMPTY STATE (No Timesheet Found & Form not opened yet) */
+            /* VIEW 3: EMPTY STATE */
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
               <div style={{ fontSize: '48px', marginBottom: '10px' }}>📂</div>
               <h2 style={{ color: '#111827', margin: '0 0 10px 0' }}>No Data Found</h2>
@@ -352,7 +369,6 @@ const styles = {
   userInfo: { color: '#D1D5DB', fontSize: '14px' },
   logoutBtn: { backgroundColor: 'transparent', color: '#9CA3AF', border: '1px solid #4B5563', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
   
-  // 🔥 NEW: Flex Layout for Sidebar + Main Content
   portalLayout: { flex: 1, width: '100%', maxWidth: '1000px', margin: '40px auto', padding: '0 20px 40px 20px', display: 'flex', gap: '30px', alignItems: 'flex-start', overflowY: 'auto' },
   
   sidebar: { width: '280px', flexShrink: 0, backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' },

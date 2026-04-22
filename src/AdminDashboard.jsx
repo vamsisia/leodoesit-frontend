@@ -1,16 +1,12 @@
-
 import { useState, useEffect } from 'react';
-
 
 // SMART CALCULATOR: Determines total US working hours using LIVE API Data
 const getExpectedMonthlyHours = (periodStart, apiHolidays = []) => {
   const date = new Date(periodStart || Date.now());
   
-  // Shift the date backwards by exactly 1 month
-  date.setMonth(date.getMonth() - 1);
-  
-  const year = date.getFullYear();
-  const month = date.getMonth(); 
+  // 🔥 FIX: Removed the date.setMonth() shift that was grabbing the wrong month
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth(); 
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   let workingDays = 0;
@@ -22,7 +18,6 @@ const getExpectedMonthlyHours = (periodStart, apiHolidays = []) => {
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
       const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       
-      // Check against the LIVE holidays fetched from the API
       if (!apiHolidays.includes(formattedDate)) {
         workingDays++;
       }
@@ -36,7 +31,6 @@ export default function AdminDashboard() {
   const [timesheets, setTimesheets] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // --- EXISTING VIEW STATE ---
   const [viewMode, setViewMode] = useState('PENDING'); 
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -46,36 +40,28 @@ export default function AdminDashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // --- NEW ENTERPRISE STATE ---
-  const [drawerItem, setDrawerItem] = useState(null); // Replaces viewingProof
+  const [drawerItem, setDrawerItem] = useState(null); 
   const [modalConfig, setModalConfig] = useState({ isOpen: false, action: '', targetId: null, isBulk: false });
   const [rejectionReason, setRejectionReason] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-
-  // 🔥 ADD THIS LINE: State to hold our live API holidays
   const [usHolidays, setUsHolidays] = useState([]);
-
   
-  // Session Mute State (Wipes on logout/refresh)
   const [muteApprovals, setMuteApprovals] = useState(sessionStorage.getItem('muteApprovals') === 'true');
   const [tempMuteCheck, setTempMuteCheck] = useState(false);
 
   useEffect(() => {
     fetchTimesheets();
-    fetchLiveHolidays(); // Call the new API function
+    fetchLiveHolidays(); 
   }, []);
 
-  // Clear selections when switching tabs
   useEffect(() => {
     setSelectedIds([]);
   }, [viewMode]);
 
-  // 🔥 ADD THIS FUNCTION: Fetches US holidays for the current and previous year safely
   const fetchLiveHolidays = async () => {
     try {
       const currentYear = new Date().getFullYear();
-      // We fetch this year AND last year just in case timesheets cross over January 1st
       const [thisYearRes, lastYearRes] = await Promise.all([
         fetch(`https://date.nager.at/api/v3/PublicHolidays/${currentYear}/US`),
         fetch(`https://date.nager.at/api/v3/PublicHolidays/${currentYear - 1}/US`)
@@ -84,24 +70,24 @@ export default function AdminDashboard() {
       const thisYearData = await thisYearRes.json();
       const lastYearData = await lastYearRes.json();
 
-      // The API returns full objects. We map them to extract just the "YYYY-MM-DD" strings
       const holidayDates = [...thisYearData, ...lastYearData].map(holiday => holiday.date);
-      
       setUsHolidays(holidayDates);
     } catch (error) {
       console.error("Failed to fetch holidays from API:", error);
-      // Failsafe fallback just in case the API goes down
       const year = new Date().getFullYear();
       setUsHolidays([`${year}-01-01`, `${year}-07-04`, `${year}-12-25`]);
     }
   };
 
   const fetchTimesheets = async () => {
+    // 🔥 FIX: Grab the admin data to send the tenant ID for the security check!
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      const response = await fetch('http://localhost:5000/api/timesheets');
+      const response = await fetch('http://localhost:5000/api/timesheets', {
+        headers: { 'x-tenant-id': admin?.tenant_id } // 🔥 This unlocks the queue!
+      });
       const data = await response.json();
       if (data.success) {
-        // Mocking screenshots for testing as requested
         const dataWithMockProof = data.data.map(ts => ({
           ...ts,
           screenshot_urls: ts.screenshot_urls || [
@@ -118,14 +104,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- NEW SMART ACTION LOGIC ---
   const handleActionClick = (action, targetId, isBulk = false) => {
-    // If it's an APPROVAL and the admin muted warnings this session, execute instantly!
     if (action === 'APPROVE' && muteApprovals) {
       executeBackendAction(action, isBulk ? selectedIds : [targetId]);
       return;
     }
-    // Otherwise, open the Smart Modal
     setModalConfig({ isOpen: true, action, targetId, isBulk });
     setTempMuteCheck(false); 
     setRejectionReason('');  
@@ -137,7 +120,6 @@ export default function AdminDashboard() {
       return;
     }
 
-    // Save mute preference to Session Storage if checked during approval
     if (modalConfig.action === 'APPROVE' && tempMuteCheck) {
       sessionStorage.setItem('muteApprovals', 'true');
       setMuteApprovals(true);
@@ -145,17 +127,13 @@ export default function AdminDashboard() {
 
     const targets = modalConfig.isBulk ? selectedIds : [modalConfig.targetId];
     
-    // 🔥 THE FIX: Close the modal and drawer instantly to keep the UI snappy!
     setModalConfig({ isOpen: false, action: '', targetId: null, isBulk: false });
     if (drawerItem) setDrawerItem(null); 
 
-    // Now send the request to the server in the background
     await executeBackendAction(modalConfig.action, targets, rejectionReason);
   };
 
   const executeBackendAction = async (action, targetArray, reason = '') => {
-    // 🔥 1. OPTIMISTIC UPDATE: Update the UI instantly before the server even finishes!
-    // Using 'prevTimesheets' guarantees React never uses a stale memory snapshot
     setTimesheets(prevTimesheets => prevTimesheets.map(ts => {
       if (targetArray.includes(ts.id)) {
         return { ...ts, status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' };
@@ -163,10 +141,7 @@ export default function AdminDashboard() {
       return ts;
     }));
 
-    // Clear selections instantly
     setSelectedIds([]);
-
-    // 2. Now process the heavy network lifting silently in the background
     setIsProcessing(true);
     try {
       for (let id of targetArray) {
@@ -199,31 +174,20 @@ export default function AdminDashboard() {
     setSortConfig({ key, direction });
   };
 
-  // --- LOGIC ENGINE ---
-  // let filteredList = timesheets.filter(ts => {
-  //   if (viewMode === 'PENDING') return ts.status === 'SUBMITTED';
-  //   return ts.status === 'APPROVED' || ts.status === 'REJECTED'; 
-  // });
-
-  // --- LOGIC ENGINE ---
   let filteredList = timesheets.filter(ts => {
     if (viewMode === 'PENDING') return ts.status === 'SUBMITTED';
     return ts.status === 'APPROVED' || ts.status === 'REJECTED'; 
   });
 
-  // 🔥 THE OPTION B FILTER LOGIC 
   if (viewMode === 'HISTORY') {
     filteredList = filteredList.filter(ts => {
-      // If Admin hasn't selected anything, show all
       if (filterMonth === 'ALL' && filterYear === 'ALL') return true;
       
-      // Look at the strict Billing Period Start Date
       const tsDate = new Date(ts.period_start);
-      // Format to "01", "02", etc.
-      const tsMonth = String(tsDate.getMonth() + 1).padStart(2, '0'); 
-      const tsYear = String(tsDate.getFullYear());
+      // 🔥 FIX: Use UTC to ensure dates submitted at midnight don't shift to the previous month!
+      const tsMonth = String(tsDate.getUTCMonth() + 1).padStart(2, '0'); 
+      const tsYear = String(tsDate.getUTCFullYear());
 
-      // Check if it matches the dropdowns
       const matchMonth = filterMonth === 'ALL' || tsMonth === filterMonth;
       const matchYear = filterYear === 'ALL' || tsYear === filterYear;
 
@@ -236,11 +200,6 @@ export default function AdminDashboard() {
     return searchString.includes(searchTerm.toLowerCase());
   });
 
-  // filteredList = filteredList.filter(ts => {
-  //   const searchString = `${ts.first_name} ${ts.last_name}`.toLowerCase();
-  //   return searchString.includes(searchTerm.toLowerCase());
-  // });
-
   filteredList.sort((a, b) => {
     let valA = a[sortConfig.key]; let valB = b[sortConfig.key];
     if (sortConfig.key === 'total_hours') { valA = parseFloat(valA || 0); valB = parseFloat(valB || 0); } 
@@ -250,16 +209,15 @@ export default function AdminDashboard() {
     return 0;
   });
 
-  // Calculate targets for the modal mini-receipt
   const targetTimesheets = modalConfig.isOpen 
     ? (modalConfig.isBulk ? timesheets.filter(ts => selectedIds.includes(ts.id)) : timesheets.filter(ts => ts.id === modalConfig.targetId))
     : [];
 
-    const currentYear = new Date().getFullYear();
-    const availableYears = [];
-    for (let year = 2025; year <= currentYear + 1; year++) {
-      availableYears.push(year);
-    }
+  const currentYear = new Date().getFullYear();
+  const availableYears = [];
+  for (let year = 2025; year <= currentYear + 1; year++) {
+    availableYears.push(year);
+  }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -279,7 +237,6 @@ export default function AdminDashboard() {
               </button>
             </div>
             
-            {/* 🔥 NEW DROPDOWNS (Only show in History mode) */}
             {viewMode === 'HISTORY' && (
               <>
                 <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} style={styles.searchInput}>
@@ -318,11 +275,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Bulk Action Bar */}
       {selectedIds.length > 0 && viewMode === 'PENDING' && (
         <div style={styles.bulkBar}>
           <span style={{ fontWeight: 'bold' }}>{selectedIds.length} timesheets selected</span>
-          {/* Rejections disabled in bulk to force individual reasons */}
           <button onClick={() => handleActionClick('APPROVE', null, true)} style={styles.approveBtn}>✅ Approve Selected</button>
         </div>
       )}
@@ -367,10 +322,7 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
             {filteredList.map((ts) => {
-                  // 1. Calculate exactly how many hours they SHOULD have worked this month
                   const expectedMonthlyHours = getExpectedMonthlyHours(ts.period_start, usHolidays);
-                  
-                  // 2. Trigger the overtime warning ONLY if they exceed the specific month's limit
                   const isOvertime = parseFloat(ts.total_hours) > expectedMonthlyHours;
 
                   return (
@@ -384,27 +336,25 @@ export default function AdminDashboard() {
                     <td style={styles.td}>
                       {new Date(ts.period_start || Date.now()).toLocaleDateString()} - {new Date(ts.period_end || Date.now()).toLocaleDateString()}
                     </td>
-                   {/* UPGRADE 1: PERFECT HOURS FORMATTING (Now with Stacked Overtime) */}
-<td style={styles.td}>
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-    <span style={{ 
-      fontFamily: 'monospace', fontSize: '16px', fontWeight: 'bold', 
-      color: isOvertime ? '#DC2626' : '#374151',
-      backgroundColor: isOvertime ? '#FEE2E2' : '#F3F4F6',
-      padding: '4px 10px', borderRadius: '6px',
-      display: 'inline-block'
-    }}>
-      {parseFloat(ts.total_hours).toFixed(2)}
-    </span>
-    
-    {/* Neatly stacked underneath! */}
-    {isOvertime && (
-      <span style={{ fontSize: '10px', fontWeight: '800', color: '#DC2626', letterSpacing: '0.05em' }}>
-        ⚠️ OVERTIME
-      </span>
-    )}
-  </div>
-</td>
+                    <td style={styles.td}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ 
+                          fontFamily: 'monospace', fontSize: '16px', fontWeight: 'bold', 
+                          color: isOvertime ? '#DC2626' : '#374151',
+                          backgroundColor: isOvertime ? '#FEE2E2' : '#F3F4F6',
+                          padding: '4px 10px', borderRadius: '6px',
+                          display: 'inline-block'
+                        }}>
+                          {parseFloat(ts.total_hours).toFixed(2)}
+                        </span>
+                        
+                        {isOvertime && (
+                          <span style={{ fontSize: '10px', fontWeight: '800', color: '#DC2626', letterSpacing: '0.05em' }}>
+                            ⚠️ OVERTIME
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={styles.td}>
                       <button onClick={(e) => { e.stopPropagation(); setDrawerItem(ts); }} style={styles.proofBtn}>
                         🖼️ View Attachments ({ts.screenshot_urls?.length || 0})
@@ -433,7 +383,6 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* DIAMOND FEATURE 1: PROOF OF WORK SLIDE-OUT DRAWER */}
       {drawerItem && (
         <div style={styles.drawerOverlay} onClick={() => setDrawerItem(null)}>
           <div style={styles.drawerPanel} onClick={e => e.stopPropagation()}>
@@ -482,7 +431,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* DIAMOND FEATURE 2: SMART CONFIRMATION MODAL WITH MINI-RECEIPT & MUTE */}
       {modalConfig.isOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
@@ -494,7 +442,6 @@ export default function AdminDashboard() {
               Please review the following {modalConfig.isBulk ? selectedIds.length : 1} timesheet(s) before confirming.
             </p>
 
-            {/* MINI-RECEIPT */}
             <div style={styles.modalReceipt}>
               <div style={{ maxHeight: '150px', overflowY: 'auto', paddingRight: '5px' }}>
                 {targetTimesheets.map(ts => (
@@ -514,7 +461,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* REJECTION REASON TEXTAREA */}
             {modalConfig.action === 'REJECT' && (
               <div style={{ marginTop: '20px', marginBottom: '10px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '5px', color: '#374151' }}>
@@ -529,7 +475,6 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* SESSION MUTE CHECKBOX (Approvals Only) */}
             {modalConfig.action === 'APPROVE' && (
               <div style={styles.muteBox}>
                 <input 
