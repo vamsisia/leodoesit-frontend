@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ConfirmationModal from './ConfirmationModal'; 
+import imageCompression from 'browser-image-compression'; 
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June", 
@@ -18,8 +19,11 @@ export default function Portal() {
 
   // Form State
   const [hours, setHours] = useState('');
+  const [periodStart, setPeriodStart] = useState(''); // 🔥 NEW: Track exact start date
+  const [periodEnd, setPeriodEnd] = useState('');     // 🔥 NEW: Track exact end date
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [isCompressing, setIsCompressing] = useState(false); 
   const [isModalOpen, setIsModalOpen] = useState(false); 
   
   // Sidebar Selection State
@@ -27,7 +31,6 @@ export default function Portal() {
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() === 0 ? 11 : new Date().getMonth() - 1);
   const [viewYear, setViewYear] = useState(new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear());
   
-  // 🔥 NEW: Get exact current date constraints for the dropdowns
   const currentDate = new Date();
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
@@ -54,12 +57,14 @@ export default function Portal() {
       }
     }
 
-    fetchMyTimesheets(currentUser.email);
+    fetchMyTimesheets(currentUser.email, currentUser.tenant_id);
   }, [navigate]);
 
-  const fetchMyTimesheets = async (email) => {
+  const fetchMyTimesheets = async (email, tenantId) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/timesheets/me/${email}`);
+      const response = await fetch(`http://localhost:5000/api/timesheets/me/${email}`, {
+        headers: { 'x-tenant-id': tenantId }
+      });
       const data = await response.json();
       if (data.success) {
         setTimesheets(Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []));
@@ -71,14 +76,47 @@ export default function Portal() {
     }
   };
 
-  const handleFileChange = (e) => {
-    setUploadedFiles(Array.from(e.target.files));
+  const handleFileChange = async (e) => {
+    const files = Array.from(e.target.files);
+    const processedFiles = [];
+    setIsCompressing(true); 
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        const options = { maxSizeMB: 0.15, maxWidthOrHeight: 1920, useWebWorker: true, fileType: 'image/jpeg' };
+        try {
+          const compressedBlob = await imageCompression(file, options);
+          const newFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+          const finalFile = new File([compressedBlob], newFileName, { type: "image/jpeg" });
+          processedFiles.push(finalFile);
+        } catch (error) {
+          console.error("Compression error:", error);
+          processedFiles.push(file); 
+        }
+      } else {
+        const MAX_FILE_SIZE_MB = 5; 
+        const fileSizeMB = file.size / (1024 * 1024);
+        if (fileSizeMB > MAX_FILE_SIZE_MB) {
+          alert(`⚠️ The file "${file.name}" is way too large (${fileSizeMB.toFixed(1)} MB).\n\nPlease compress it to under 5 MB, or upload image screenshots instead.`);
+        } else {
+          processedFiles.push(file); 
+        }
+      }
+    }
+
+    if (processedFiles.length === 0) e.target.value = '';
+    setUploadedFiles(processedFiles);
+    setIsCompressing(false); 
   };
 
   const handleOpenPopup = (e) => {
     e.preventDefault();
-    if (!hours || uploadedFiles.length === 0) {
-      alert("⚠️ You must enter your hours AND attach at least one screenshot of proof.");
+    if (!hours || !periodStart || !periodEnd || uploadedFiles.length === 0) {
+      alert("⚠️ You must enter your hours, select the start/end dates, AND attach proof of work.");
+      return;
+    }
+    if (new Date(periodStart) > new Date(periodEnd)) {
+      alert("⚠️ The Start Date cannot be after the End Date.");
       return;
     }
     setIsModalOpen(true);
@@ -87,10 +125,9 @@ export default function Portal() {
   const handleFinalSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const year = parseInt(viewYear);
-      const month = parseInt(viewMonth);
-      const startDate = new Date(Date.UTC(year, month, 1));
-      const endDate = new Date(Date.UTC(year, month + 1, 0));
+      // 🔥 CHANGED: Use the exact dates the user picked!
+      const startDate = new Date(periodStart);
+      const endDate = new Date(periodEnd);
 
       const formData = new FormData();
       formData.append('user_id', user.id);
@@ -98,22 +135,27 @@ export default function Portal() {
       formData.append('period_end', endDate.toISOString());
       formData.append('total_hours', parseFloat(hours));
       
-      uploadedFiles.forEach(file => {
-        formData.append('screenshots', file); 
-      });
+      uploadedFiles.forEach(file => formData.append('screenshots', file));
 
       const response = await fetch('http://localhost:5000/api/timesheets', {
         method: 'POST',
+        headers: { 'x-tenant-id': user.tenant_id },
         body: formData 
       });
 
       const data = await response.json();
       if (data.success) {
-        await fetchMyTimesheets(user.email); 
+        await fetchMyTimesheets(user.email, user.tenant_id); 
         setIsModalOpen(false);
         setIsCreatingNew(false); 
         setHours('');
+        setPeriodStart('');
+        setPeriodEnd('');
         setUploadedFiles([]);
+        
+        const fileInput = document.getElementById('file-upload-input');
+        if (fileInput) fileInput.value = '';
+
         alert("✅ Timesheet and files submitted successfully!");
       } else {
         alert("❌ Failed to submit: " + data.error);
@@ -130,13 +172,11 @@ export default function Portal() {
     navigate('/');
   };
 
-  // 🔥 NEW: Safe Year Change Handler
   const handleYearChange = (e) => {
     const selectedYear = parseInt(e.target.value);
     setViewYear(selectedYear);
     setIsCreatingNew(false);
     
-    // Safety check: If they switch to the current year, but have a future month selected, boot them back to the current month!
     if (selectedYear === currentYear && parseInt(viewMonth) > currentMonth) {
       setViewMonth(currentMonth);
     }
@@ -144,13 +184,12 @@ export default function Portal() {
 
   if (loading || !user) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading Portal...</div>;
 
-  const displayedTimesheet = timesheets.find(ts => {
+  // 🔥 CHANGED: Now pulls an ARRAY of timesheets for the month, instead of just locking out after one
+  const displayedTimesheets = timesheets.filter(ts => {
     if (!ts.period_start) return false;
     const tsDate = new Date(ts.period_start);
-    return tsDate.getUTCMonth() === parseInt(viewMonth) && tsDate.getUTCFullYear() === parseInt(viewYear);
+    return tsDate.getMonth() === parseInt(viewMonth) && tsDate.getFullYear() === parseInt(viewYear);
   });
-
-  const isLockedOut = displayedTimesheet && displayedTimesheet.status !== 'REJECTED';
 
   return (
     <div style={styles.container}>
@@ -168,9 +207,9 @@ export default function Portal() {
 
       <div style={styles.portalLayout}>
         
-        {/* --- LEFT SIDEBAR: Period Selector & Status --- */}
+        {/* --- LEFT SIDEBAR --- */}
         <div style={styles.sidebar}>
-          <h3 style={{ margin: '0 0 20px 0', color: '#111827' }}>Billing Period</h3>
+          <h3 style={{ margin: '0 0 20px 0', color: '#111827' }}>Billing Filter</h3>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <div style={styles.inputGroup}>
@@ -181,10 +220,7 @@ export default function Portal() {
                 style={styles.input}
               >
                 {MONTHS.map((month, index) => {
-                  // 🔥 NEW: Hide any month in the dropdown that hasn't happened yet in the current year
-                  if (parseInt(viewYear) === currentYear && index > currentMonth) {
-                    return null;
-                  }
+                  if (parseInt(viewYear) === currentYear && index > currentMonth) return null;
                   return <option key={index} value={index}>{month}</option>;
                 })}
               </select>
@@ -192,12 +228,7 @@ export default function Portal() {
             
             <div style={styles.inputGroup}>
               <label style={styles.label}>Year</label>
-              {/* 🔥 NEW: Wired up the safe year change handler */}
-              <select 
-                value={viewYear} 
-                onChange={handleYearChange} 
-                style={styles.input}
-              >
+              <select value={viewYear} onChange={handleYearChange} style={styles.input}>
                 <option value={currentYear}>{currentYear}</option>
                 <option value={currentYear - 1}>{currentYear - 1}</option>
               </select>
@@ -205,129 +236,107 @@ export default function Portal() {
           </div>
 
           <div style={styles.sidebarStatusBox}>
-            {displayedTimesheet ? (
-              <div style={{ color: '#059669', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>✅</span> Timesheet Found
-              </div>
-            ) : (
-              <div style={{ color: '#DC2626', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>⚠️</span> No Data Found
-              </div>
-            )}
+            <div style={{ color: displayedTimesheets.length > 0 ? '#059669' : '#6B7280', fontWeight: 'bold', marginBottom: '15px' }}>
+              {displayedTimesheets.length} Timesheet(s) Found
+            </div>
 
             <button 
               onClick={() => setIsCreatingNew(true)} 
-              disabled={isLockedOut}
-              style={{
-                ...styles.addBtn, 
-                backgroundColor: isLockedOut ? '#E5E7EB' : themeColor,
-                color: isLockedOut ? '#9CA3AF' : 'white',
-                cursor: isLockedOut ? 'not-allowed' : 'pointer'
-              }}
+              style={{ ...styles.addBtn, backgroundColor: themeColor, color: 'white', cursor: 'pointer' }}
             >
-              + Add Timesheet
+              + Submit New Timesheet
             </button>
           </div>
         </div>
 
-        {/* --- RIGHT MAIN CARD: Dashboard or Form --- */}
+        {/* --- RIGHT MAIN CARD --- */}
         <div style={styles.mainCard}>
           
-          {!isCreatingNew && isLockedOut ? (
-            /* VIEW 1: THE READ-ONLY STATUS DASHBOARD */
+          {!isCreatingNew && displayedTimesheets.length > 0 ? (
+            /* VIEW 1: MULTIPLE TIMESHEET DASHBOARD */
             <div style={styles.statusView}>
-              <div style={styles.statusHeader}>
-                <h1 style={styles.title}>Your Timesheet is locked.</h1>
-                <p style={styles.subtitle}>You have already submitted your hours for {MONTHS[viewMonth]} {viewYear}.</p>
-              </div>
-
-              <div style={styles.statusBox}>
-                <p style={styles.statusLabel}>Current Status</p>
-                
-                {displayedTimesheet.status === 'SUBMITTED' && (
-                  <h2 style={{ margin: 0, color: '#D97706' }}>⏳ Pending Admin Approval</h2>
-                )}
-                {displayedTimesheet.status === 'APPROVED' && (
-                  <h2 style={{ margin: 0, color: '#059669' }}>✅ Approved & Invoiced</h2>
-                )}
-
-                <div style={styles.statsGrid}>
-                  <div>
-                    <p style={styles.gridLabel}>Hours Logged</p>
-                    <p style={styles.gridValue}>{displayedTimesheet.total_hours} hrs</p>
-                  </div>
-                  <div>
-                    <p style={styles.gridLabel}>Hourly Rate</p>
-                    <p style={styles.gridValue}>${parseFloat(user.pay_rate).toFixed(2)} / hr</p>
-                  </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div>
+                  <h1 style={{...styles.title, fontSize: '24px'}}>Your Submitted Timesheets</h1>
+                  <p style={styles.subtitle}>Showing data for {MONTHS[viewMonth]} {viewYear}</p>
                 </div>
+                <button onClick={() => setIsCreatingNew(true)} style={{...styles.addBtn, backgroundColor: themeColor, width: 'auto', padding: '10px 20px', color: 'white'}}>
+                  + Add Another
+                </button>
               </div>
-              
-              <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '13px', marginTop: '20px' }}>
-                If you made a mistake on your current timesheet, please contact your administrator to reject it so you can resubmit.
-              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {displayedTimesheets.map((ts, idx) => (
+                  <div key={ts.id || idx} style={{ ...styles.statusBox, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '20px' }}>
+                    <div>
+                      <p style={{ margin: '0 0 5px 0', fontWeight: 'bold', color: '#111827', fontSize: '16px' }}>
+                        {new Date(ts.period_start).toLocaleDateString()} &nbsp;→&nbsp; {new Date(ts.period_end).toLocaleDateString()}
+                      </p>
+                      <p style={{ margin: 0, color: '#6B7280', fontSize: '14px' }}>
+                        <strong>{ts.total_hours}</strong> Hours Logged
+                      </p>
+                    </div>
+                    <div>
+                      {ts.status === 'SUBMITTED' && <span style={styles.badgePending}>⏳ Pending Admin Review</span>}
+                      {ts.status === 'APPROVED' && <span style={styles.badgeApproved}>✅ Approved</span>}
+                      {ts.status === 'REJECTED' && <span style={styles.badgeRejected}>❌ Rejected</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-          ) : isCreatingNew || (displayedTimesheet && displayedTimesheet.status === 'REJECTED') ? (
+          ) : isCreatingNew || (displayedTimesheets.length > 0 && displayedTimesheets.some(ts => ts.status === 'REJECTED')) ? (
 
-            /* VIEW 2: THE SUBMISSION FORM */
+            /* VIEW 2: THE SUBMISSION FORM (Now requires Dates) */
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '30px' }}>
                 <div>
                   <h1 style={styles.title}>Submit Your Hours</h1>
-                  <p style={styles.subtitle}>Logging hours for <strong>{MONTHS[viewMonth]} {viewYear}</strong>.</p>
+                  <p style={styles.subtitle}>Enter the exact dates you worked.</p>
                 </div>
                 <button onClick={() => setIsCreatingNew(false)} style={styles.cancelBtn}>Cancel</button>
               </div>
 
-              {displayedTimesheet && displayedTimesheet.status === 'REJECTED' && (
-                <div style={styles.rejectedBanner}>
-                  <strong>⚠️ Action Required:</strong> Your previous timesheet was rejected. Please review your hours and proof of work and submit again.
-                </div>
-              )}
-
               <form onSubmit={handleOpenPopup} style={styles.form}>
                 
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Total Hours for {MONTHS[viewMonth]}</label>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    placeholder="e.g. 42.50"
-                    value={hours}
-                    onChange={(e) => setHours(e.target.value)}
-                    style={styles.input}
-                    required 
-                  />
+                {/* 🔥 NEW: Exact Date Pickers */}
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <div style={{ ...styles.inputGroup, flex: 1 }}>
+                    <label style={styles.label}>Start Date</label>
+                    <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} style={styles.input} required />
+                  </div>
+                  <div style={{ ...styles.inputGroup, flex: 1 }}>
+                    <label style={styles.label}>End Date</label>
+                    <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} style={styles.input} required />
+                  </div>
                 </div>
 
                 <div style={styles.inputGroup}>
-                  <label style={styles.label}>Proof of Work (Screenshots)</label>
+                  <label style={styles.label}>Total Hours for this Period</label>
+                  <input type="number" step="0.01" placeholder="e.g. 40.00" value={hours} onChange={(e) => setHours(e.target.value)} style={styles.input} required />
+                </div>
+
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>Proof of Work (Screenshots or PDF max 5MB)</label>
                   <div style={styles.uploadArea}>
-                    <p style={{ margin: '0 0 10px 0', color: '#6B7280', fontSize: '14px' }}>
-                      Upload screenshots verifying your tracked time.
-                    </p>
+                    <p style={{ margin: '0 0 10px 0', color: '#6B7280', fontSize: '14px' }}>Upload screenshots verifying your tracked time.</p>
+                    <input id="file-upload-input" type="file" multiple accept="image/*,application/pdf" onChange={handleFileChange} style={{ margin: '0 auto', display: 'block', padding: '10px' }} />
                     
-                    <input 
-                      type="file" 
-                      multiple 
-                      accept="image/*,application/pdf"
-                      onChange={handleFileChange}
-                      style={{ margin: '0 auto', display: 'block', padding: '10px' }}
-                    />
+                    {isCompressing && <p style={{ color: '#D97706', fontWeight: 'bold' }}>⏳ Processing files...</p>}
                     
-                    {uploadedFiles.length > 0 && (
+                    {!isCompressing && uploadedFiles.length > 0 && (
                       <div style={styles.fileList}>
                         {uploadedFiles.map((file, i) => (
-                          <div key={i} style={styles.fileItem}>📎 {file.name}</div>
+                          <div key={i} style={styles.fileItem}>📎 {file.name} ({(file.size / 1024).toFixed(0)} KB)</div>
                         ))}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <button type="submit" style={{...styles.submitBtn, backgroundColor: themeColor}} disabled={isSubmitting}>
-                  {isSubmitting ? 'Submitting...' : 'Submit Timesheet for Approval'}
+                <button type="submit" style={{ ...styles.submitBtn, backgroundColor: isSubmitting || isCompressing || uploadedFiles.length === 0 ? '#9CA3AF' : themeColor }} disabled={isSubmitting || isCompressing || uploadedFiles.length === 0}>
+                  {isCompressing ? 'Processing Files...' : isSubmitting ? 'Submitting...' : 'Submit Timesheet for Approval'}
                 </button>
               </form>
             </div>
@@ -338,9 +347,9 @@ export default function Portal() {
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
               <div style={{ fontSize: '48px', marginBottom: '10px' }}>📂</div>
               <h2 style={{ color: '#111827', margin: '0 0 10px 0' }}>No Data Found</h2>
-              <p style={{ color: '#6B7280', margin: '0 0 20px 0' }}>You have not submitted a timesheet for {MONTHS[viewMonth]} {viewYear}.</p>
+              <p style={{ color: '#6B7280', margin: '0 0 20px 0' }}>You have not submitted any timesheets for {MONTHS[viewMonth]} {viewYear}.</p>
               <button onClick={() => setIsCreatingNew(true)} style={{...styles.addBtn, backgroundColor: themeColor}}>
-                + Add Timesheet Now
+                + Submit Your First Timesheet
               </button>
             </div>
             
@@ -353,7 +362,7 @@ export default function Portal() {
         onClose={() => setIsModalOpen(false)}
         onConfirm={handleFinalSubmit}
         hours={hours}
-        payout={hours ? (parseFloat(hours) * parseFloat(user.pay_rate)).toFixed(2) : "0.00"}
+        payout={hours ? (parseFloat(hours) * parseFloat(user.pay_rate || 0)).toFixed(2) : "0.00"}
         isSubmitting={isSubmitting}
       />
     </div>
@@ -374,7 +383,7 @@ const styles = {
   sidebar: { width: '280px', flexShrink: 0, backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' },
   mainCard: { flex: 1, backgroundColor: 'white', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' },
   
-  sidebarStatusBox: { marginTop: '25px', paddingTop: '25px', borderTop: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column', gap: '15px' },
+  sidebarStatusBox: { marginTop: '25px', paddingTop: '25px', borderTop: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column' },
   
   title: { margin: '0 0 10px 0', color: '#111827', fontSize: '28px' },
   subtitle: { margin: 0, color: '#6B7280', fontSize: '15px' },
@@ -394,9 +403,10 @@ const styles = {
   
   statusView: { display: 'flex', flexDirection: 'column' },
   statusHeader: { textAlign: 'center', marginBottom: '30px' },
-  statusBox: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '30px', textAlign: 'center' },
-  statusLabel: { fontSize: '12px', textTransform: 'uppercase', color: '#6B7280', fontWeight: 'bold', letterSpacing: '1px', margin: '0 0 10px 0' },
-  statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '30px', borderTop: '1px solid #E5E7EB', paddingTop: '30px' },
-  gridLabel: { margin: '0 0 5px 0', fontSize: '13px', color: '#6B7280' },
-  gridValue: { margin: 0, fontSize: '20px', color: '#111827', fontWeight: 'bold' }
+  statusBox: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '12px', textAlign: 'center' },
+  
+  // Status Badges
+  badgePending: { backgroundColor: '#FEF3C7', color: '#D97706', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', border: '1px solid #FDE68A' },
+  badgeApproved: { backgroundColor: '#D1FAE5', color: '#059669', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', border: '1px solid #A7F3D0' },
+  badgeRejected: { backgroundColor: '#FEE2E2', color: '#DC2626', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', border: '1px solid #FECACA' }
 };

@@ -40,13 +40,20 @@ export default function InvoicingHub() {
 
   const fetchHubData = async () => {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
+    
+    if (!admin?.tenant_id) {
+      console.error("Session Error: No Tenant ID found.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const [tsResponse, clientsResponse] = await Promise.all([
         fetch('http://localhost:5000/api/timesheets?status=APPROVED', {
-          headers: { 'x-tenant-id': admin?.tenant_id } 
+          headers: { 'x-tenant-id': admin.tenant_id } 
         }),
         fetch('http://localhost:5000/api/clients', {
-          headers: { 'x-tenant-id': admin?.tenant_id } 
+          headers: { 'x-tenant-id': admin.tenant_id } 
         })
       ]);
       
@@ -108,9 +115,15 @@ export default function InvoicingHub() {
 
   const executeVoidTimesheet = async (timesheetId) => {
     setIsProcessing(true);
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
+
     try {
       const response = await fetch(`http://localhost:5000/api/timesheets/${timesheetId}/void`, {
-        method: 'PUT'
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-tenant-id': admin?.tenant_id 
+        }
       });
       
       const data = await response.json();
@@ -154,8 +167,9 @@ export default function InvoicingHub() {
     if (filterMonth !== 'ALL' || filterYear !== 'ALL') {
       const tsDate = ts.period_start ? new Date(ts.period_start) : null;
       if (tsDate) {
-        const tsMonth = String(tsDate.getUTCMonth() + 1).padStart(2, '0');
-        const tsYear = String(tsDate.getUTCFullYear());
+        // 🔥 FIX: Now strictly uses local timezone rendering instead of UTC
+        const tsMonth = String(tsDate.getMonth() + 1).padStart(2, '0');
+        const tsYear = String(tsDate.getFullYear());
         
         if (filterMonth !== 'ALL') matchesMonth = tsMonth === filterMonth;
         if (filterYear !== 'ALL') matchesYear = tsYear === filterYear;
@@ -290,9 +304,9 @@ export default function InvoicingHub() {
                  
                  const isReady = !!matchingClient;
 
-                 // 🔥 FIXED: Shorter, cleaner date format
+                 // 🔥 FIX: Now rendering with the correct local timezone month and year
                  const tsDate = ts.period_start ? new Date(ts.period_start) : null;
-                 const periodText = tsDate ? `${MONTHS[tsDate.getUTCMonth()]} ${tsDate.getUTCFullYear()}` : 'N/A';
+                 const periodText = tsDate ? `${MONTHS[tsDate.getMonth()]} ${tsDate.getFullYear()}` : 'N/A';
 
                   return (
                     <tr key={ts.id} style={styles.tableRow}>
@@ -307,7 +321,6 @@ export default function InvoicingHub() {
                       </td>
                       
                       <td style={styles.td}>
-                        {/* 🔥 FIXED: Only show dropdown if unmapped. Otherwise, show a locked badge. */}
                         {isReady ? (
                           <div style={styles.lockedClientBadge}>
                             ✅ {matchingClient.company_name}
@@ -449,7 +462,6 @@ const styles = {
   td: { padding: '15px 20px', color: '#4B5563', fontSize: '15px' },
   projectedBadge: { backgroundColor: '#F0FDF4', color: '#166534', padding: '6px 12px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', border: '1px solid #BBF7D0' },
   
-  // 🔥 NEW STYLE: Locked Client Badge
   lockedClientBadge: { backgroundColor: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', display: 'inline-block' },
   
   invoiceBtnReady: { backgroundColor: '#4F46E5', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' },
@@ -459,7 +471,6 @@ const styles = {
   pageBtn: { padding: '8px 16px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
   pageInfo: { color: '#6B7280', fontSize: '14px' },
   
-  // Modal Styles
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' },
   emptyStateIcon: { fontSize: '48px', marginBottom: '10px' },
   queueBtn: { backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' },

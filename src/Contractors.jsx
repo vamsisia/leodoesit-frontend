@@ -8,7 +8,12 @@ export default function Contractors() {
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [visaFilter, setVisaFilter] = useState('All'); 
+  
+  // 🔥 NEW: Checkbox Filter States
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedContracts, setSelectedContracts] = useState([]);
+  const [selectedVisas, setSelectedVisas] = useState([]);
+  const [selectedVendors, setSelectedVendors] = useState([]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10; 
@@ -42,9 +47,10 @@ export default function Contractors() {
     fetchSubVendors(); 
   }, []);
 
+  // Reset to page 1 when any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, visaFilter, showArchive]);
+  }, [searchTerm, selectedContracts, selectedVisas, selectedVendors, showArchive]);
 
   // --- API Calls ---
   const fetchContractors = async () => {
@@ -94,33 +100,27 @@ export default function Contractors() {
   // --- Handlers ---
   const handleArchiveContractor = async (id, name) => {
     if (!window.confirm(`Move ${name} to the Archive?`)) return;
-    
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
-    
     try {
       const response = await fetch(`http://localhost:5000/api/users/${id}`, { 
         method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'x-tenant-id': admin?.tenant_id 
-        }
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id }
       });
       const data = await response.json();
-      
       if (data.success) {
         setContractors(contractors.map(c => c.id === id ? { ...c, is_deleted: true } : c));
         setViewingUser(null);
-      } else {
-        alert("Failed to archive: " + (data.error || "Unknown server error"));
-      }
-    } catch (error) { 
-      alert("Network error archiving employee."); 
-    }
+      } else { alert("Failed to archive: " + (data.error || "Unknown server error")); }
+    } catch (error) { alert("Network error archiving employee."); }
   };
 
   const handleRestoreContractor = async (id, name) => {
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
-      const response = await fetch(`http://localhost:5000/api/users/${id}/restore`, { method: 'PUT' });
+      const response = await fetch(`http://localhost:5000/api/users/${id}/restore`, { 
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id }
+      });
       const data = await response.json();
       if (data.success) setContractors(contractors.map(c => c.id === id ? { ...c, is_deleted: false } : c));
     } catch (error) { alert("Network error restoring employee."); }
@@ -128,30 +128,19 @@ export default function Contractors() {
 
   const handlePermanentDelete = async (id, name) => {
     const confirmText = window.prompt(`Type "DELETE" to permanently destroy the record for ${name}.`);
-    
     if (confirmText?.trim() !== "DELETE") return;
-    
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
-    
     try {
       const response = await fetch(`http://localhost:5000/api/users/${id}/permanent`, { 
         method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'x-tenant-id': admin?.tenant_id 
-        }
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id }
       });
       const data = await response.json();
-      
       if (data.success) {
         setContractors(contractors.filter(c => c.id !== id));
         setViewingUser(null);
-      } else {
-        alert("Failed to permanently delete: " + (data.error || "Unknown server error"));
-      }
-    } catch (error) { 
-      alert("Network error performing permanent delete."); 
-    }
+      } else { alert("Failed to permanently delete: " + (data.error || "Unknown server error")); }
+    } catch (error) { alert("Network error performing permanent delete."); }
   };
 
   const formatPhoneNumber = (value) => {
@@ -223,7 +212,8 @@ export default function Contractors() {
     const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
       const response = await fetch('http://localhost:5000/api/users', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id },
         body: JSON.stringify({ ...formData, tenant_id: admin?.tenant_id })
       });
       const data = await response.json();
@@ -235,9 +225,11 @@ export default function Contractors() {
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
     try {
       const response = await fetch(`http://localhost:5000/api/users/${editingId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id },
         body: JSON.stringify(editFormData)
       });
       const data = await response.json();
@@ -249,9 +241,10 @@ export default function Contractors() {
   };
 
   const exportToCSV = () => {
-    const headers = ['First Name', 'Last Name', 'Email', 'Role', 'Status', 'Visa', 'Vendor'];
-    const csvData = contractors.map(c => [
-        c.first_name, c.last_name, c.email, c.role || 'N/A', c.is_active !== false ? 'Active' : 'Inactive', c.visa_status || 'N/A', c.vendor_name || 'N/A'
+    const headers = ['First Name', 'Last Name', 'Email', 'Role', 'Status', 'Visa', 'Vendor', 'Contract Type'];
+    // Export based on the current filtered list
+    const csvData = processedContractors.map(c => [
+        c.first_name, c.last_name, c.email, c.role || 'N/A', c.is_active !== false ? 'Active' : 'Inactive', c.visa_status || 'N/A', c.vendor_name || 'N/A', c.contract_type || 'W2'
     ]);
     const csvContent = [headers.join(','), ...csvData.map(row => row.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -277,6 +270,11 @@ export default function Contractors() {
     setInsightUser({ ...user, totalBilled, totalPaid, pendingAmount: totalBilled - totalPaid, invoiceCount: userInvoices.length });
   };
 
+  // 🔥 NEW: Checkbox Toggling Helper
+  const toggleFilter = (setState, value) => {
+    setState(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+  };
+
   // --- Filtering & Sorting ---
   let processedContractors = contractors.filter(user => {
     if (user.role === 'ADMIN' || user.email === 'admin@leodoesit.com') return false; 
@@ -284,11 +282,21 @@ export default function Contractors() {
     if (showArchive && !isArchived) return false; 
     if (!showArchive && isArchived) return false; 
 
+    // Search Bar Filter
     const searchString = `${user.first_name} ${user.last_name} ${user.email} ${user.vendor_name || ''}`.toLowerCase();
     const matchesSearch = searchString.includes(searchTerm.toLowerCase());
-    const matchesVisa = visaFilter === 'All' || user.visa_status === visaFilter;
 
-    return matchesSearch && matchesVisa;
+    // Checkbox Filters
+    const cType = user.contract_type || 'W2';
+    const matchesContract = selectedContracts.length === 0 || selectedContracts.includes(cType);
+    
+    const userVisa = user.visa_status || 'N/A';
+    const matchesVisa = selectedVisas.length === 0 || selectedVisas.includes(userVisa);
+    
+    const userVendor = user.vendor_name || 'N/A';
+    const matchesVendor = selectedVendors.length === 0 || selectedVendors.includes(userVendor);
+
+    return matchesSearch && matchesContract && matchesVisa && matchesVendor;
   });
 
   processedContractors.sort((a, b) => {
@@ -302,6 +310,10 @@ export default function Contractors() {
   const totalPages = Math.ceil(processedContractors.length / itemsPerPage);
   const currentItems = processedContractors.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  // --- Dynamic Lists for Filters ---
+  const allVendors = Array.from(new Set(contractors.map(c => c.vendor_name || 'N/A').filter(v => v !== 'N/A'))).sort();
+  const allVisas = ['US Citizen', 'Green Card', 'H1B', 'OPT', 'CPT', 'H4 EAD', 'N/A'];
+
   // --- KPI Calculations ---
   const activeStats = contractors.filter(c => !c.is_deleted && c.role !== 'ADMIN' && !c.email.includes('admin@'));
   const statTotalEmployees = activeStats.length;
@@ -314,28 +326,28 @@ export default function Contractors() {
       
       {/* 1. Top Action Bar */}
       <div style={styles.header}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={styles.title}>{showArchive ? '📦 Archived Records' : 'Team Roster'}</h1>
             <p style={styles.subtitle}>Manage your workforce, set billing rates, and view insights.</p>
           </div>
           
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={() => setShowArchive(!showArchive)} style={styles.darkBtn}>
               {showArchive ? '👥 Back to Roster' : '📦 View Archive'}
             </button>
             {!showArchive && (
               <>
                 <button onClick={exportToCSV} style={styles.darkBtn}>⬇️ Export CSV</button>
-                <select value={visaFilter} onChange={(e) => setVisaFilter(e.target.value)} style={styles.topSelect}>
-                  <option value="All">All Visas</option>
-                  <option value="US Citizen">US Citizen</option>
-                  <option value="Green Card">GC</option>
-                  <option value="H1B">H1B</option>
-                  <option value="OPT">OPT</option>
-                  <option value="CPT">CPT</option>
-                  <option value="H4 EAD">H4 EAD</option>
-                </select>
+                
+                {/* 🔥 Filter Toggle Button */}
+                <button 
+                  onClick={() => setShowFilters(!showFilters)} 
+                  style={{...styles.darkBtn, backgroundColor: showFilters ? '#4F46E5' : 'white', color: showFilters ? 'white' : '#374151', border: '1px solid #D1D5DB'}}
+                >
+                  ⚙️ Advanced Filters {(selectedContracts.length + selectedVisas.length + selectedVendors.length) > 0 ? `(${(selectedContracts.length + selectedVisas.length + selectedVendors.length)})` : ''}
+                </button>
+
                 <div style={styles.searchWrapper}>
                   <span style={{padding: '0 10px', color: '#9CA3AF'}}>🔍</span>
                   <input type="text" placeholder="Search team..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={styles.topSearchInput} />
@@ -346,6 +358,60 @@ export default function Contractors() {
           </div>
         </div>
       </div>
+
+      {/* 🔥 NEW: Advanced Filter Panel */}
+      {showFilters && !showArchive && (
+        <div style={styles.filterPanel}>
+          <div style={styles.filterColumn}>
+            <h4 style={styles.filterTitle}>Contract Type</h4>
+            <div style={styles.filterList}>
+              {['W2', 'C2C', '1099'].map(type => (
+                <label key={type} style={styles.checkboxLabel}>
+                  <input type="checkbox" checked={selectedContracts.includes(type)} onChange={() => toggleFilter(setSelectedContracts, type)} />
+                  {type}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.filterColumn}>
+            <h4 style={styles.filterTitle}>Visa Status</h4>
+            <div style={styles.filterList}>
+              {allVisas.map(visa => (
+                <label key={visa} style={styles.checkboxLabel}>
+                  <input type="checkbox" checked={selectedVisas.includes(visa)} onChange={() => toggleFilter(setSelectedVisas, visa)} />
+                  {visa}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.filterColumn}>
+            <h4 style={styles.filterTitle}>End Client / Vendor</h4>
+            <div style={styles.filterList}>
+              {allVendors.map(vendor => (
+                <label key={vendor} style={styles.checkboxLabel}>
+                  <input type="checkbox" checked={selectedVendors.includes(vendor)} onChange={() => toggleFilter(setSelectedVendors, vendor)} />
+                  {vendor}
+                </label>
+              ))}
+              <label style={styles.checkboxLabel}>
+                <input type="checkbox" checked={selectedVendors.includes('N/A')} onChange={() => toggleFilter(setSelectedVendors, 'N/A')} />
+                Unassigned (N/A)
+              </label>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'flex-end', marginLeft: 'auto' }}>
+             <button 
+                onClick={() => { setSelectedContracts([]); setSelectedVisas([]); setSelectedVendors([]); }}
+                style={{ backgroundColor: '#F3F4F6', border: '1px solid #D1D5DB', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold', color: '#4B5563' }}
+             >
+               Clear Filters
+             </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Vibrant KPI Cards */}
       {!showArchive && (
@@ -378,7 +444,11 @@ export default function Contractors() {
         {loading ? (
           <p style={{ padding: '20px' }}>Loading team...</p>
         ) : processedContractors.length === 0 ? (
-          <p style={{ padding: '20px', color: '#6B7280', fontStyle: 'italic' }}>No records found.</p>
+          <div style={{ padding: '40px', textAlign: 'center' }}>
+             <div style={{ fontSize: '30px', marginBottom: '10px' }}>🕵️</div>
+             <h3 style={{ margin: '0 0 5px 0', color: '#111827' }}>No matches found</h3>
+             <p style={{ color: '#6B7280', margin: 0 }}>Try adjusting your search or clearing the advanced filters.</p>
+          </div>
         ) : (
           <>
             <table style={styles.table}>
@@ -508,7 +578,6 @@ export default function Contractors() {
                 </div>
               </div>
 
-              {/* C2C INFO WITH READ-ONLY AUTOFILLS */}
               {formData.contract_type === 'C2C' && (
                   <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #4F46E5' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>Corp-to-Corp (C2C) Information</h4>
@@ -537,7 +606,6 @@ export default function Contractors() {
                   </div>
               )}
 
-              {/* VENDOR INFO WITH READ-ONLY AUTOFILLS & DATES */}
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
                 <select name="vendor_name" value={formData.vendor_name} onChange={(e) => handleClientSelect(e, false)} style={styles.input}>
@@ -626,7 +694,6 @@ export default function Contractors() {
                 </div>
               </div>
 
-              {/* C2C INFO WITH READ-ONLY AUTOFILLS */}
               {editFormData.contract_type === 'C2C' && (
                   <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginTop: '15px', borderLeft: '4px solid #4F46E5' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#374151' }}>Corp-to-Corp (C2C) Information</h4>
@@ -655,7 +722,6 @@ export default function Contractors() {
                   </div>
               )}
 
-              {/* VENDOR INFO WITH READ-ONLY AUTOFILLS & DATES */}
               <h3 style={styles.sectionHeader}>3. Vendor / Project Details</h3>
               <div style={styles.formGrid}>
                 <select name="vendor_name" value={editFormData.vendor_name || ''} onChange={(e) => handleClientSelect(e, true)} style={styles.input}>
@@ -842,7 +908,14 @@ const styles = {
   kpiValue: { fontSize: '36px', fontWeight: '900', margin: 0, zIndex: 2, position: 'relative' },
   kpiBgNum: { position: 'absolute', right: '5px', bottom: '-15px', fontSize: '90px', fontWeight: '900', opacity: 0.15, zIndex: 1, lineHeight: 1 },
 
-  darkBtn: { backgroundColor: '#374151', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' },
+  // 🔥 NEW: Filter Styles
+  filterPanel: { backgroundColor: 'white', padding: '25px', borderRadius: '12px', border: '1px solid #E5E7EB', marginBottom: '25px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '30px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' },
+  filterColumn: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  filterTitle: { margin: '0 0 5px 0', fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' },
+  filterList: { maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '10px' },
+  checkboxLabel: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151', cursor: 'pointer', userSelect: 'none' },
+
+  darkBtn: { backgroundColor: 'white', color: '#374151', border: '1px solid #D1D5DB', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px', transition: 'all 0.2s' },
   primaryBtn: { backgroundColor: '#4F46E5', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' },
   topSelect: { padding: '10px 16px', borderRadius: '8px', border: '1px solid #D1D5DB', backgroundColor: 'white', outline: 'none', fontSize: '13px', color: '#374151' },
   searchWrapper: { display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #D1D5DB', borderRadius: '8px', overflow: 'hidden' },
