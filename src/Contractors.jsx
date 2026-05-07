@@ -9,7 +9,7 @@ export default function Contractors() {
   
   const [searchTerm, setSearchTerm] = useState('');
   
-  // 🔥 NEW: Checkbox Filter States
+  // 🔥 Checkbox Filter States
   const [showFilters, setShowFilters] = useState(false);
   const [selectedContracts, setSelectedContracts] = useState([]);
   const [selectedVisas, setSelectedVisas] = useState([]);
@@ -29,6 +29,10 @@ export default function Contractors() {
   const [editingId, setEditingId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   
+  // 🔥 NEW: Password Reset States
+  const [passwordModalUser, setPasswordModalUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  
   const initialFormState = {
     first_name: '', last_name: '', email: '',
     phone_number: '', address: '', dob: '', visa_status: '',
@@ -47,7 +51,6 @@ export default function Contractors() {
     fetchSubVendors(); 
   }, []);
 
-  // Reset to page 1 when any filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedContracts, selectedVisas, selectedVendors, showArchive]);
@@ -240,9 +243,34 @@ export default function Contractors() {
     } catch (error) { alert("Network error."); } finally { setIsSubmitting(false); }
   };
 
+  // 🔥 NEW: Password Reset Handler
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const admin = JSON.parse(localStorage.getItem('leodoesit_user'));
+    try {
+      const response = await fetch(`http://localhost:5000/api/users/${passwordModalUser.id}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': admin?.tenant_id },
+        body: JSON.stringify({ newPassword })
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert("Password updated successfully!");
+        setPasswordModalUser(null);
+        setNewPassword('');
+      } else {
+        alert("Failed to update password. Make sure your backend route exists.");
+      }
+    } catch (error) {
+      alert("Network error.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const exportToCSV = () => {
     const headers = ['First Name', 'Last Name', 'Email', 'Role', 'Status', 'Visa', 'Vendor', 'Contract Type'];
-    // Export based on the current filtered list
     const csvData = processedContractors.map(c => [
         c.first_name, c.last_name, c.email, c.role || 'N/A', c.is_active !== false ? 'Active' : 'Inactive', c.visa_status || 'N/A', c.vendor_name || 'N/A', c.contract_type || 'W2'
     ]);
@@ -270,7 +298,6 @@ export default function Contractors() {
     setInsightUser({ ...user, totalBilled, totalPaid, pendingAmount: totalBilled - totalPaid, invoiceCount: userInvoices.length });
   };
 
-  // 🔥 NEW: Checkbox Toggling Helper
   const toggleFilter = (setState, value) => {
     setState(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
   };
@@ -310,11 +337,9 @@ export default function Contractors() {
   const totalPages = Math.ceil(processedContractors.length / itemsPerPage);
   const currentItems = processedContractors.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // --- Dynamic Lists for Filters ---
   const allVendors = Array.from(new Set(contractors.map(c => c.vendor_name || 'N/A').filter(v => v !== 'N/A'))).sort();
   const allVisas = ['US Citizen', 'Green Card', 'H1B', 'OPT', 'CPT', 'H4 EAD', 'N/A'];
 
-  // --- KPI Calculations ---
   const activeStats = contractors.filter(c => !c.is_deleted && c.role !== 'ADMIN' && !c.email.includes('admin@'));
   const statTotalEmployees = activeStats.length;
   const statW2 = activeStats.filter(c => c.contract_type === 'W2' || !c.contract_type).length; 
@@ -340,7 +365,6 @@ export default function Contractors() {
               <>
                 <button onClick={exportToCSV} style={styles.darkBtn}>⬇️ Export CSV</button>
                 
-                {/* 🔥 Filter Toggle Button */}
                 <button 
                   onClick={() => setShowFilters(!showFilters)} 
                   style={{...styles.darkBtn, backgroundColor: showFilters ? '#4F46E5' : 'white', color: showFilters ? 'white' : '#374151', border: '1px solid #D1D5DB'}}
@@ -359,7 +383,7 @@ export default function Contractors() {
         </div>
       </div>
 
-      {/* 🔥 NEW: Advanced Filter Panel */}
+      {/* Advanced Filter Panel */}
       {showFilters && !showArchive && (
         <div style={styles.filterPanel}>
           <div style={styles.filterColumn}>
@@ -454,13 +478,13 @@ export default function Contractors() {
             <table style={styles.table}>
               <thead>
                 <tr style={styles.tableHeader}>
-                  <th style={styles.thSortable} onClick={() => handleSort('first_name')}>
+                  <th style={{...styles.thSortable, width: '18%'}} onClick={() => handleSort('first_name')}>
                     Name {sortConfig.key === 'first_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  <th style={styles.th}>Contact & Vendor</th>
-                  <th style={styles.thCentered}>Financials</th>
-                  <th style={styles.thCentered}>Role / Visa</th>
-                  <th style={styles.thCentered}>Actions</th>
+                  <th style={{...styles.th, width: '25%'}}>Contact & Vendor</th>
+                  <th style={{...styles.thCentered, width: '20%'}}>Financials</th>
+                  <th style={{...styles.thCentered, width: '15%'}}>Role / Visa</th>
+                  <th style={{...styles.thCentered, width: '22%'}}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -468,17 +492,19 @@ export default function Contractors() {
                   return (
                     <tr key={user.id} style={styles.tableRow}>
                       <td style={styles.tdData}>
-                        <div onClick={() => setViewingUser(user)} style={styles.nameLink}>
+                        <div onClick={() => setViewingUser(user)} style={{...styles.nameLink, ...styles.truncate}} title={`${user.first_name} ${user.last_name}`}>
                           {user.first_name} {user.last_name}
                         </div>
                       </td>
                       
                       <td style={styles.tdData}>
                         <div style={{ color: '#4B5563', fontSize: '14px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                           ✉️ {user.email}
+                           <span>✉️</span>
+                           <span style={styles.truncate} title={user.email}>{user.email}</span>
                         </div>
                         <div style={{ color: '#6B7280', fontSize: '12px', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                           🏢 <span style={{ fontWeight: '600', color: '#374151' }}>{user.vendor_name || 'N/A'}</span>
+                           <span>🏢</span> 
+                           <span style={{ fontWeight: '600', color: '#374151', ...styles.truncate }} title={user.vendor_name || 'N/A'}>{user.vendor_name || 'N/A'}</span>
                         </div>
                       </td>
                       
@@ -489,8 +515,10 @@ export default function Contractors() {
                       </td>
                       
                       <td style={styles.tdCentered}>
-                        <div style={{fontWeight: 'bold', color: '#111827', fontSize: '13px'}}>{user.role || 'Unassigned'}</div>
-                        <div style={{color: '#3B82F6', fontSize: '12px', fontWeight: '700', margin: '4px 0'}}>
+                        <div style={{...styles.truncate, fontWeight: 'bold', color: '#111827', fontSize: '13px'}} title={user.role || 'Unassigned'}>
+                            {user.role || 'Unassigned'}
+                        </div>
+                        <div style={{color: '#3B82F6', fontSize: '12px', fontWeight: '700', margin: '4px 0', ...styles.truncate}} title={`${user.contract_type || 'W2'} • ${user.visa_status || 'N/A'} • ${user.is_active !== false ? 'Active' : 'Inactive'}`}>
                           {user.contract_type || 'W2'} • {user.visa_status || 'N/A'} • {user.is_active !== false ? 'Active' : 'Inactive'}
                         </div>
                       </td>
@@ -832,12 +860,43 @@ export default function Contractors() {
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => openInsights(viewingUser)} style={styles.insightBtn}>📊 Financial Dashboard</button>
                 <button onClick={() => handleEditClick(viewingUser)} style={styles.editBtn}>✏️ Edit Employee</button>
+                {/* 🔥 NEW: Reset Password Button */}
+                <button onClick={() => setPasswordModalUser(viewingUser)} style={styles.passwordBtn}>🔑 Reset Password</button>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => handleArchiveContractor(viewingUser.id, viewingUser.first_name)} style={styles.archiveBtn}>📦 Archive</button>
                 <button onClick={() => setViewingUser(null)} style={{...styles.cancelBtn, backgroundColor: '#9CA3AF'}}>Close Profile</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- 🔥 NEW: RESET PASSWORD MODAL --- */}
+      {passwordModalUser && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalBox}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, color: '#111827' }}>Reset Password</h2>
+              <button onClick={() => setPasswordModalUser(null)} style={styles.closeBtn}>✕</button>
+            </div>
+            <p style={{ color: '#4B5563', marginBottom: '20px' }}>
+              Set a new password for <strong>{passwordModalUser.first_name} {passwordModalUser.last_name}</strong>.
+            </p>
+            <form onSubmit={handlePasswordReset}>
+              <input 
+                type="text" 
+                required 
+                placeholder="Enter new password" 
+                value={newPassword} 
+                onChange={(e) => setNewPassword(e.target.value)} 
+                style={{...styles.input, width: '100%', marginBottom: '20px', boxSizing: 'border-box'}} 
+              />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="submit" disabled={isSubmitting} style={{...styles.saveBtn, flex: 1}}>{isSubmitting ? 'Saving...' : 'Update Password'}</button>
+                <button type="button" onClick={() => setPasswordModalUser(null)} style={{...styles.cancelBtn, backgroundColor: '#F3F4F6', color: '#4B5563', flex: 1}}>Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -908,7 +967,7 @@ const styles = {
   kpiValue: { fontSize: '36px', fontWeight: '900', margin: 0, zIndex: 2, position: 'relative' },
   kpiBgNum: { position: 'absolute', right: '5px', bottom: '-15px', fontSize: '90px', fontWeight: '900', opacity: 0.15, zIndex: 1, lineHeight: 1 },
 
-  // 🔥 NEW: Filter Styles
+  // Filter Styles
   filterPanel: { backgroundColor: 'white', padding: '25px', borderRadius: '12px', border: '1px solid #E5E7EB', marginBottom: '25px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '30px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' },
   filterColumn: { display: 'flex', flexDirection: 'column', gap: '10px' },
   filterTitle: { margin: '0 0 5px 0', fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' },
@@ -921,8 +980,8 @@ const styles = {
   searchWrapper: { display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #D1D5DB', borderRadius: '8px', overflow: 'hidden' },
   topSearchInput: { padding: '10px 10px 10px 0', border: 'none', outline: 'none', width: '180px', fontSize: '13px' },
   
-  tableContainer: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', overflow: 'hidden' },
-  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', whiteSpace: 'nowrap' },
+  tableContainer: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', overflowX: 'auto', overflowY: 'hidden' },
+  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' },
   
   tableHeader: { backgroundColor: '#ffffff', borderBottom: '1px solid #E5E7EB' },
   th: { padding: '20px 15px', fontWeight: '600', fontSize: '12px', color: '#6B7280', textTransform: 'capitalize', letterSpacing: '0.02em' },
@@ -937,7 +996,9 @@ const styles = {
   financialBadge: { backgroundColor: '#D1FAE5', color: '#065F46', padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', display: 'inline-block' },
   docBadge: { backgroundColor: '#FEF3C7', color: '#B45309', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '800', display: 'inline-block', marginTop: '4px' },
   
-  actionGroup: { display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' },
+  truncate: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' },
+
+  actionGroup: { display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', minWidth: '190px' },
   iconBtn: { backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', color: '#374151', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' },
   iconBtnSquare: { backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
 
@@ -964,5 +1025,7 @@ const styles = {
   cancelBtn: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
-  archiveBtn: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
+  archiveBtn: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  // 🔥 NEW: Password Button Style
+  passwordBtn: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
 };

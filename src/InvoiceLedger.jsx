@@ -116,7 +116,6 @@ export default function InvoiceLedger() {
         if (res && !res.success) {
            alert(`❌ Action Failed: ${res.error}`);
         } else if (res && res.success && (action === 'EMAIL' || action === 'REMIND')) {
-           // We removed the alert here so it doesn't pop up 10 times during a bulk send!
            console.log(`✅ ${res.message}`); 
         }
 
@@ -127,7 +126,11 @@ export default function InvoiceLedger() {
       }
       
       if (action === 'EMAIL' || action === 'REMIND') {
-         alert(`✅ All bulk emails have been successfully processed!`);
+         if (targets.length > 1) {
+           alert(`✅ All bulk emails have been successfully processed!`);
+         } else {
+           alert(`✅ Email sent successfully!`);
+         }
       }
       
       fetchInvoices(); 
@@ -162,7 +165,7 @@ export default function InvoiceLedger() {
     // B. Vendor Dropdown Filter
     const matchVendor = filterVendor === 'ALL' || String(inv.client_name || '').toLowerCase() === String(filterVendor).toLowerCase();
 
-    // C. Search Bar Filter (The fix!)
+    // C. Search Bar Filter
     const searchString = `${inv.client_name || ''} ${inv.invoice_number || ''} ${inv.first_name || ''} ${inv.last_name || ''}`.toLowerCase();
     const searchTermsArray = (searchTerm || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
     const matchSearch = searchTermsArray.length === 0 || searchTermsArray.every(term => searchString.includes(term));
@@ -170,7 +173,7 @@ export default function InvoiceLedger() {
     return matchDate && matchVendor && matchSearch;
   });
 
-  // 🔥 2. KPI CALCULATIONS (Now built directly off the fully filtered results)
+  // 🔥 2. KPI CALCULATIONS
   const kpiData = fullyFilteredInvoices.filter(inv => inv.status !== 'VOID');
   
   const totalRevenue = kpiData.reduce((sum, inv) => sum + parseFloat(inv.amount_invoiced || 0), 0);
@@ -361,6 +364,10 @@ export default function InvoiceLedger() {
                   <td style={styles.td} onClick={e => e.stopPropagation()}>
                     <div style={styles.actionGroup}>
                       <button onClick={(e) => downloadPDF(e, inv)} style={{...styles.downloadBtn, backgroundColor: '#374151'}}>View</button>
+                      
+                      {/* 🔥 NEW INDIVIDUAL EMAIL BUTTON */}
+                      <button onClick={() => handleActionClick('EMAIL', inv.id, false)} style={{...styles.downloadBtn, backgroundColor: '#3B82F6'}}>Mail</button>
+
                       {inv.status !== 'VOID' && (
                         <>
                           <button onClick={() => handleActionClick('PAY', inv.id)} style={{...styles.downloadBtn, backgroundColor: '#10B981'}}>Pay</button>
@@ -447,6 +454,12 @@ export default function InvoiceLedger() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '30px' }}>
                 <button onClick={(e) => downloadPDF(e, drawerInvoice)} style={{...styles.submitBtn, backgroundColor: '#1F2937'}}>📄 Download PDF Invoice</button>
+                
+                {/* 🔥 NEW INDIVIDUAL EMAIL BUTTON IN DRAWER */}
+                <button onClick={() => handleActionClick('EMAIL', drawerInvoice.id, false)} style={{...styles.submitBtn, backgroundColor: '#3B82F6'}}>
+                   ✉️ Send Invoice Email
+                </button>
+
                 {drawerInvoice.status !== 'VOID' && (
                   <>
                     {drawerInvoice.status === 'PARTIAL' && (

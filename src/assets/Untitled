@@ -3,29 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import ConfirmationModal from './ConfirmationModal'; 
 import imageCompression from 'browser-image-compression'; 
 
-// 1. THE WIDE TEXT LOGOS (For inside the Contractor Portal)
+// 🔥 Import the logos
 import ldiLogo from './assets/LDI Logo.png';
 import gandivaLogo from './assets/GI Logo PNG.png';
-
-// 2. THE SMALL SQUARE SYMBOLS (For the Browser Tab / Title Bar)
-import ldiSymbol from './assets/LDI Symbol.png';
-import giSymbol from './assets/GI Symbol.png';
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June", 
   "July", "August", "September", "October", "November", "December"
 ];
-
-// 3. THE FUNCTION TO CHANGE THE BROWSER TAB ICON
-const changeBrowserIcon = (iconUrl) => {
-  let link = document.querySelector("link[rel~='icon']");
-  if (!link) {
-    link = document.createElement('link');
-    link.rel = 'icon';
-    document.head.appendChild(link);
-  }
-  link.href = iconUrl;
-};
 
 export default function Portal() {
   const [user, setUser] = useState(null);
@@ -70,22 +55,29 @@ export default function Portal() {
     const currentUser = JSON.parse(userString);
     setUser(currentUser);
 
-    // 🔥 4. DYNAMIC BRANDING & BROWSER TAB LOGIC
+    // 🔥 Find or create the browser's favicon tag
+    let favicon = document.querySelector("link[rel~='icon']");
+    if (!favicon) {
+      favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      document.head.appendChild(favicon);
+    }
+
     if (currentUser.tenant_name) {
       if (currentUser.tenant_name.toLowerCase() === 'gandiva') {
         setCompanyName('Gandiva Insights');
         setThemeColor('#4F46E5'); 
         
-        // Changes Browser Tab (Title Bar)
-        document.title = "Gandiva Portal"; 
-        changeBrowserIcon(giSymbol);       
+        // 🔥 Update Tab Title and Icon for Gandiva
+        document.title = "Gandiva Insights";
+        favicon.href = gandivaLogo;
       } else {
         setCompanyName('Leodoes It');
         setThemeColor('#10B981'); 
         
-        // Changes Browser Tab (Title Bar)
-        document.title = "Leodoes IT Portal"; 
-        changeBrowserIcon(ldiSymbol);         
+        // 🔥 Update Tab Title and Icon for Leodoes It
+        document.title = "Leodoes IT";
+        favicon.href = ldiLogo;
       }
     }
 
@@ -236,11 +228,6 @@ export default function Portal() {
 
   const handleLogout = () => {
     localStorage.removeItem('leodoesit_user');
-    
-    // Reset browser tab to default when logging out
-    document.title = "Portal Login";
-    changeBrowserIcon('/vite.svg'); 
-    
     navigate('/');
   };
 
@@ -269,7 +256,7 @@ export default function Portal() {
       <nav style={styles.nav}>
         <div style={styles.navContent}>
           
-          {/* 🔥 5. ENSURE THE PORTAL USES THE WIDE LOGO */}
+          {/* 🔥 IDENTICAL BRANDING: Left Side Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={styles.logoBadge}>
               <img 

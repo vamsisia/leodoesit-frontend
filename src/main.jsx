@@ -9,6 +9,7 @@ import InvoiceLedger from './InvoiceLedger.jsx'
 import Clients from '../src/clients.jsx'
 import Contractors from './Contractors.jsx'
 import Login from './Login.jsx'
+import Reports from './Reports'; // 🔥 ADD THIS LINE
 
 // 🔥 NEW: Import the Sub Vendors component
 import SubVendors from './SubVendors.jsx' 
@@ -39,6 +40,8 @@ createRoot(document.getElementById('root')).render(
           <Route path="sub-vendors" element={<SubVendors />} />
           
           <Route path="contractors" element={<Contractors />} />
+        {/* 🔥 ADD THIS NEW ROUTE HERE: */}
+  <Route path="reports" element={<Reports />} />
         </Route>
       </Routes>
     </BrowserRouter>
