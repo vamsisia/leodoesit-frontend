@@ -9,9 +9,8 @@ import InvoiceLedger from './InvoiceLedger.jsx'
 import Clients from '../src/clients.jsx'
 import Contractors from './Contractors.jsx'
 import Login from './Login.jsx'
-import Reports from './Reports'; // 🔥 ADD THIS LINE
-
-// 🔥 NEW: Import the Sub Vendors component
+import Reports from './Reports'; 
+import AdminTimesheets from "./AdminTimesheets"; 
 import SubVendors from './SubVendors.jsx' 
 
 createRoot(document.getElementById('root')).render(
@@ -35,13 +34,12 @@ createRoot(document.getElementById('root')).render(
           <Route path="hub" element={<InvoicingHub />} />
           <Route path="ledger" element={<InvoiceLedger />} />
           <Route path="clients" element={<Clients />} />
-          
-          {/* 🔥 NEW ROUTE: Sub Vendors */}
           <Route path="sub-vendors" element={<SubVendors />} />
-          
           <Route path="contractors" element={<Contractors />} />
-        {/* 🔥 ADD THIS NEW ROUTE HERE: */}
-  <Route path="reports" element={<Reports />} />
+          <Route path="reports" element={<Reports />} />
+          
+          {/* 🔥 ADDED THE TIMESHEETS ROUTE HERE */}
+          <Route path="timesheets" element={<AdminTimesheets />} />
         </Route>
       </Routes>
     </BrowserRouter>

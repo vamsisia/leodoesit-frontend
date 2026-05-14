@@ -121,8 +121,12 @@ export default function AdminLayout() {
           <Link to="/admin/contractors" style={path.includes('/contractors') ? styles.activeNavItem : styles.navItem}>
             👷 Contractors
           </Link>
+
+          {/* 🔥 ADDED: Timesheets Route */}
+          <Link to="/admin/timesheets" style={path.includes('/timesheets') ? styles.activeNavItem : styles.navItem}>
+            🕒 Timesheets
+          </Link>
           
-          {/* 🔥 NEW: Reports Link */}
           <Link to="/admin/reports" style={path.includes('/reports') ? styles.activeNavItem : styles.navItem}>
             📊 Reports
           </Link>

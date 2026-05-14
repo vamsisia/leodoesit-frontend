@@ -509,7 +509,13 @@ export default function Contractors() {
                       </td>
                       
                       <td style={styles.tdCentered}>
-                        <div style={styles.financialBadge}>
+                        {/* 🔥 UPDATED: Dynamic Colors for Active vs Inactive */}
+                        <div style={{
+                          ...styles.financialBadge,
+                          backgroundColor: user.is_active !== false ? '#D1FAE5' : '#FEE2E2',
+                          color: user.is_active !== false ? '#065F46' : '#991B1B',
+                          border: user.is_active !== false ? 'none' : '1px solid #FECACA'
+                        }}>
                           Pay: ${parseFloat(user.pay_rate || 0).toFixed(2)} | Bill: ${parseFloat(user.invoice_rate || 0).toFixed(2)}
                         </div>
                       </td>
@@ -860,7 +866,6 @@ export default function Contractors() {
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => openInsights(viewingUser)} style={styles.insightBtn}>📊 Financial Dashboard</button>
                 <button onClick={() => handleEditClick(viewingUser)} style={styles.editBtn}>✏️ Edit Employee</button>
-                {/* 🔥 NEW: Reset Password Button */}
                 <button onClick={() => setPasswordModalUser(viewingUser)} style={styles.passwordBtn}>🔑 Reset Password</button>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -872,7 +877,7 @@ export default function Contractors() {
         </div>
       )}
 
-      {/* --- 🔥 NEW: RESET PASSWORD MODAL --- */}
+      {/* --- RESET PASSWORD MODAL --- */}
       {passwordModalUser && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalBox}>
@@ -960,14 +965,12 @@ const styles = {
   title: { fontSize: '28px', color: '#111827', margin: '0 0 5px 0', fontWeight: '700' },
   subtitle: { color: '#6B7280', margin: 0, fontSize: '14px' },
   
-  // KPI Gradient Cards
   kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' },
   kpiCard: { position: 'relative', padding: '25px', borderRadius: '12px', color: 'white', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
   kpiTitle: { fontSize: '14px', fontWeight: 'bold', margin: '0 0 10px 0', zIndex: 2, position: 'relative' },
   kpiValue: { fontSize: '36px', fontWeight: '900', margin: 0, zIndex: 2, position: 'relative' },
   kpiBgNum: { position: 'absolute', right: '5px', bottom: '-15px', fontSize: '90px', fontWeight: '900', opacity: 0.15, zIndex: 1, lineHeight: 1 },
 
-  // Filter Styles
   filterPanel: { backgroundColor: 'white', padding: '25px', borderRadius: '12px', border: '1px solid #E5E7EB', marginBottom: '25px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '30px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' },
   filterColumn: { display: 'flex', flexDirection: 'column', gap: '10px' },
   filterTitle: { margin: '0 0 5px 0', fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' },
@@ -993,7 +996,7 @@ const styles = {
   tdCentered: { padding: '16px 15px', verticalAlign: 'middle', textAlign: 'center' },
   
   nameLink: { fontWeight: '700', color: '#4F46E5', fontSize: '14px', cursor: 'pointer', textDecoration: 'none' },
-  financialBadge: { backgroundColor: '#D1FAE5', color: '#065F46', padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', display: 'inline-block' },
+  financialBadge: { padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', display: 'inline-block' },
   docBadge: { backgroundColor: '#FEF3C7', color: '#B45309', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '800', display: 'inline-block', marginTop: '4px' },
   
   truncate: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' },
@@ -1006,7 +1009,6 @@ const styles = {
   pageBtn: { padding: '6px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#374151' },
   pageInfo: { color: '#6B7280', fontSize: '13px' },
 
-  // Modals
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
   largeModalBox: { backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '700px', maxWidth: '90vw', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
@@ -1026,6 +1028,5 @@ const styles = {
   insightBtn: { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   editBtn: { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   archiveBtn: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
-  // 🔥 NEW: Password Button Style
   passwordBtn: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
 };

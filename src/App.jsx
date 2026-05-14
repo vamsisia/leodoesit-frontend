@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ConfirmationModal from './ConfirmationModal'; 
 import imageCompression from 'browser-image-compression'; 
-
 // 1. THE WIDE TEXT LOGOS (For inside the Contractor Portal)
 import ldiLogo from './assets/LDI Logo.png';
 import gandivaLogo from './assets/GI Logo PNG.png';
